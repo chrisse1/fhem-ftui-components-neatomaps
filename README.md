@@ -88,7 +88,26 @@ Solange `state` auf `cleaning` steht, wird die laufende Aufzeichnung alle
 | `show-points` | aus | Die rohen Endpunkte statt des Belegungsgitters zeichnen. |
 | `show-info` | an | Zeile mit Datum, Strecke, Dauer und Zähler. |
 | `show-controls` | an | Die Pfeile zum Blättern. |
+| `text-size` | `0.8` | Schriftgröße der Zeile unter der Karte. Eine bloße Zahl ist em (wie bei `margin` in FTUI), sonst gilt jede CSS-Länge: `text-size="1.4"`, `text-size="16px"`. |
+| `arrow-size` | `1.9` | Kantenlänge der Blätterpfeile, in denselben Einheiten. Ohne Angabe wachsen sie mit `text-size` mit. |
 | `locale` | Seitensprache | `de` oder `en`, für Datum und die wenigen Texte. |
+
+In einem Popup ist die Kachelschrift oft zu klein; dort lohnen beide:
+
+```html
+<ftui-popup width="50%" height="60%" timeout="0" shape="round">
+  <ftui-popup-header>Staubsauger</ftui-popup-header>
+  <ftui-neato-map device="Staubsauger"
+                  [track-file]="Staubsauger:trackFile"
+                  [state]="Staubsauger:state"
+                  text-size="1.4" arrow-size="3"></ftui-neato-map>
+</ftui-popup>
+```
+
+Die Karte füllt das Popup-Fenster genauso wie eine Kachel. Wer lieber in CSS
+bleibt: `text-size` und `arrow-size` setzen nichts weiter als
+`--neato-map-font-size` und `--neato-map-arrow-size`, die sich auch direkt
+setzen lassen – etwa für alle Karten einer Seite auf einmal.
 
 Farben kommen aus dem FTUI-Thema und lassen sich einzeln setzen:
 
@@ -101,7 +120,9 @@ Farben kommen aus dem FTUI-Thema und lassen sich einzeln setzen:
 Es gibt `--neato-map-wall-color`, `--neato-map-free-color`,
 `--neato-map-free-opacity`, `--neato-map-point-color`,
 `--neato-map-track-color`, `--neato-map-start-color`, `--neato-map-end-color`,
-`--neato-map-background` und `--neato-map-text-color`.
+`--neato-map-background`, `--neato-map-text-color`, `--neato-map-font-size`,
+`--neato-map-arrow-size`, `--neato-map-min-height` (wie flach die Karte
+schrumpfen darf, wenn der Platz knapp wird) und `--neato-map-button-background`.
 
 ## Wie die Liste der Läufe zustande kommt
 

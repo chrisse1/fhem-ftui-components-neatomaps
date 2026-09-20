@@ -43,6 +43,12 @@
                       limit="1" show-info="false" show-controls="false"></ftui-neato-map>
     </ftui-grid-tile>
 
+    <!-- Oeffnet das Popup weiter unten. -->
+    <ftui-grid-tile row="6" col="1" width="2" height="1">
+      <ftui-icon name="expand" size="2" @click="neatoPopup.open()"></ftui-icon>
+      <ftui-label>Karte gross</ftui-label>
+    </ftui-grid-tile>
+
     <!-- Die rohen Endpunkte statt des Belegungsgitters, in eigenen Farben. -->
     <ftui-grid-tile row="4" col="7" width="3" height="2">
       <ftui-grid-header>Punkte</ftui-grid-header>
@@ -53,6 +59,16 @@
     </ftui-grid-tile>
 
   </ftui-grid>
+
+  <!-- Dieselbe Karte in einem Popup. In der Kachelschrift wird die Zeile dort
+       schnell zu klein, darum groessere Schrift und groessere Pfeile. -->
+  <ftui-popup id="neatoPopup" width="60%" height="70%" timeout="0" shape="round">
+    <ftui-popup-header>Staubsauger</ftui-popup-header>
+    <ftui-neato-map device="Staubsauger"
+                    [track-file]="Staubsauger:trackFile"
+                    [state]="Staubsauger:state"
+                    text-size="1.4" arrow-size="3"></ftui-neato-map>
+  </ftui-popup>
 </body>
 
 </html>

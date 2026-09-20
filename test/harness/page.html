@@ -50,6 +50,17 @@
     </ftui-grid-tile>
 
   </ftui-grid>
+
+  <!-- In einem Popup, wie es auf einer Tafel per Knopfdruck aufgeht: eigene
+       Groessen fuer Zeile und Pfeile, timeout=0 damit es offen bleibt. -->
+  <!-- Nicht active: sonst liegt das Overlay ueber der Seite und die anderen
+       Kacheln sind nicht mehr anklickbar. Der Test oeffnet es selbst. -->
+  <ftui-popup id="popup" width="50%" height="60%" timeout="0" shape="round">
+    <ftui-popup-header>Staubsauger</ftui-popup-header>
+    <ftui-neato-map id="map-popup"
+                    text-size="1.4" arrow-size="3"
+                    files="Staubsauger-2026-09-20_11-59-11.jsonl,Staubsauger-2026-09-19_09-30-00.jsonl"></ftui-neato-map>
+  </ftui-popup>
 </body>
 
 </html>

@@ -150,7 +150,9 @@ function probe(page, id) {
     const root = element.shadowRoot;
     const svg = root.querySelector('.stage svg');
     const box = element.getBoundingClientRect();
-    const tile = element.closest('ftui-grid-tile').getBoundingClientRect();
+    const parent = element.closest('ftui-grid-tile')
+      || element.closest('ftui-popup')?.shadowRoot.querySelector('.window');
+    const tile = parent.getBoundingClientRect();
     const svgBox = svg ? svg.getBoundingClientRect() : null;
     return {
       index: element.index,
@@ -167,8 +169,30 @@ function probe(page, id) {
       previousDisabled: root.querySelector('.previous').disabled,
       nextDisabled: root.querySelector('.next').disabled,
       box: { width: box.width, height: box.height, top: box.top, left: box.left },
-      tile: { width: tile.width, height: tile.height, top: tile.top, left: tile.left },
+      tile: { width: tile.width, height: tile.height, top: tile.top, left: tile.left, bottom: tile.bottom },
       svgBox: svgBox ? { width: svgBox.width, height: svgBox.height } : null,
+      headerHeight: parent.querySelector('ftui-grid-header, header, ftui-popup-header')
+        ? parent.querySelector('ftui-grid-header, header, ftui-popup-header').getBoundingClientRect().height
+        : (element.closest('ftui-popup')?.querySelector('ftui-popup-header')?.getBoundingClientRect().height || 0),
+      headerTop: (parent.querySelector('ftui-grid-header, header')
+        || element.closest('ftui-popup')?.querySelector('ftui-popup-header'))?.getBoundingClientRect().top ?? 0,
+      parentTop: tile.top,
+      parentBottom: tile.bottom,
+      bottom: box.bottom,
+      fontSize: parseFloat(getComputedStyle(element).fontSize),
+      arrowBox: root.querySelector('.next').getBoundingClientRect().width,
+      // The chevron inside the button, which must stay inside it.
+      arrowIcon: (() => {
+        const icon = root.querySelector('.next svg').getBoundingClientRect();
+        const button = root.querySelector('.next').getBoundingClientRect();
+        return {
+          width: icon.width,
+          height: icon.height,
+          inside: icon.left >= button.left - 1 && icon.right <= button.right + 1
+            && icon.top >= button.top - 1 && icon.bottom <= button.bottom + 1,
+        };
+      })(),
+      subSize: parseFloat(getComputedStyle(root.querySelector('.sub')).fontSize),
     };
   }, id);
 }
@@ -181,7 +205,10 @@ test('the map fills its grid tile and draws the run', { skip: missing.join(', ')
 
     // The tile keeps its header; the map has the rest of it.
     assert.ok(listed.box.width > listed.tile.width - 8, `${listed.box.width} vs tile ${listed.tile.width}`);
-    assert.ok(listed.box.height > 0.7 * listed.tile.height);
+    assert.ok(listed.box.height > listed.tile.height - listed.headerHeight - 8,
+      `${listed.box.height} of a tile of ${listed.tile.height} minus a header of ${listed.headerHeight}`);
+    assert.ok(listed.box.height + listed.headerHeight <= listed.tile.height + 1,
+      'the map pushes the header out of the tile');
     assert.ok(listed.box.left >= listed.tile.left - 1);
     assert.ok(listed.box.top >= listed.tile.top - 1);
 
@@ -195,6 +222,13 @@ test('the map fills its grid tile and draws the run', { skip: missing.join(', ')
     assert.ok(listed.walls < 656, `wall rectangles not merged: ${listed.walls}`);
     assert.equal(listed.track, 1);
     assert.equal(listed.note, '');
+
+    // The arrow is an icon in its button, not a shape across the map.
+    assert.ok(listed.arrowIcon.inside, 'the chevron sticks out of its button');
+    assert.ok(listed.arrowIcon.width < listed.arrowBox,
+      `chevron ${listed.arrowIcon.width} in a button of ${listed.arrowBox}`);
+    assert.ok(listed.arrowIcon.width < listed.box.width / 4,
+      `the chevron covers the map: ${listed.arrowIcon.width} of ${listed.box.width}`);
 
     await context.shot('tile.png');
     assert.deepEqual(context.problems, []);
@@ -361,6 +395,85 @@ test('a device without recordings says so instead of staying empty',
       assert.equal(bound.sessions, 0);
       assert.ok(bound.note.length > 0, 'no message');
       assert.equal(bound.walls, 0);
+    } finally {
+      await context.close();
+    }
+  });
+
+test('in a popup the map fills the window and the sizes are settable',
+  { skip: missing.join(', ') || false }, async () => {
+    const context = await open();
+
+    try {
+      await context.page.evaluate(() => document.querySelector('#popup').open());
+      await context.page.waitForTimeout(300);
+
+      const popup = await probe(context.page, 'map-popup');
+      const tile = await probe(context.page, 'map-listed');
+
+      // The popup window is the box now - the map has it, minus the header,
+      // and the header stays inside the window instead of being cut off.
+      assert.ok(popup.box.width > popup.tile.width - 8,
+        `${popup.box.width} in a popup of ${popup.tile.width}`);
+      assert.ok(popup.box.height > popup.tile.height - popup.headerHeight - 8,
+        `${popup.box.height} of a window of ${popup.tile.height}`);
+      assert.ok(popup.headerTop >= popup.parentTop - 1,
+        `the header at ${popup.headerTop} is above the window at ${popup.parentTop}`);
+      assert.ok(popup.bottom <= popup.parentBottom + 1,
+        `the map ends at ${popup.bottom}, the window at ${popup.parentBottom}`);
+      assert.ok(popup.svgBox.width > popup.box.width - 2);
+      assert.ok(popup.svgBox.height <= popup.box.height + 1);
+      assert.ok(popup.walls > 50, `wall rectangles: ${popup.walls}`);
+
+      // text-size="1.4" and arrow-size="3" against the defaults of the tile.
+      assert.ok(popup.fontSize > tile.fontSize * 1.5,
+        `text ${popup.fontSize} vs ${tile.fontSize}`);
+      assert.ok(popup.subSize > tile.subSize, `line ${popup.subSize} vs ${tile.subSize}`);
+      assert.ok(popup.arrowBox > tile.arrowBox * 1.5,
+        `arrow ${popup.arrowBox} vs ${tile.arrowBox}`);
+      // The arrow keeps its shape: the button is square, the chevron inside it.
+      assert.ok(Math.abs(popup.arrowBox - 3 * popup.fontSize) < 1.5,
+        `arrow ${popup.arrowBox} is not 3 em of ${popup.fontSize}`);
+      assert.ok(popup.arrowIcon.inside, 'the chevron sticks out of its button');
+      assert.ok(popup.arrowIcon.width < popup.arrowBox,
+        `chevron ${popup.arrowIcon.width} in a button of ${popup.arrowBox}`);
+
+      // Blättern geht im Popup wie in der Kachel.
+      await context.page.evaluate(() => document.querySelector('#map-popup')
+        .shadowRoot.querySelector('.next').click());
+      await settled(context.page);
+      assert.equal((await probe(context.page, 'map-popup')).index, 1);
+
+      await context.shot('popup.png');
+    } finally {
+      await context.close();
+    }
+  });
+
+test('a size can also be given in any CSS length',
+  { skip: missing.join(', ') || false }, async () => {
+    const context = await open();
+
+    try {
+      const sizes = await context.page.evaluate(async () => {
+        const map = document.querySelector('#map-listed');
+        const read = () => ({
+          font: parseFloat(getComputedStyle(map).fontSize),
+          arrow: map.shadowRoot.querySelector('.next').getBoundingClientRect().width,
+        });
+        map.setAttribute('text-size', '22px');
+        map.setAttribute('arrow-size', '44px');
+        const explicit = read();
+        map.setAttribute('text-size', '');
+        map.setAttribute('arrow-size', '');
+        return { explicit, cleared: read() };
+      });
+
+      assert.equal(sizes.explicit.font, 22);
+      assert.ok(Math.abs(sizes.explicit.arrow - 44) < 0.5, String(sizes.explicit.arrow));
+      // Empty hands it back to the stylesheet.
+      assert.notEqual(sizes.cleared.font, 22);
+      assert.ok(sizes.cleared.arrow < 44);
     } finally {
       await context.close();
     }

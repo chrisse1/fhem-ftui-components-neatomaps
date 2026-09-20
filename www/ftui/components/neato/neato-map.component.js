@@ -20,6 +20,7 @@
 */
 
 import { FtuiElement } from '../element.component.js';
+import { isNumeric } from '../../modules/ftui/ftui.helper.js';
 import * as track from './neato-track.js';
 
 const TEXTS = {
@@ -91,6 +92,7 @@ export class FtuiNeatoMap extends FtuiElement {
     this.nextButton.addEventListener('click', () => this.step(1));
     this.stage.addEventListener('pointerdown', (event) => this.onPointerDown(event));
     this.stage.addEventListener('pointerup', (event) => this.onPointerUp(event));
+    this.stage.addEventListener('pointercancel', () => { this.swipeStart = null; });
     this.stage.addEventListener('keydown', (event) => this.onKeyDown(event));
   }
 
@@ -120,6 +122,10 @@ export class FtuiNeatoMap extends FtuiElement {
       showPoints: false,
       showInfo: true,
       showControls: true,
+      // Sizes of the line below the map and of the arrows. A bare number is
+      // em, as elsewhere in FTUI; any CSS length works as well.
+      textSize: '',
+      arrowSize: '',
       locale: '',
       // a run in progress is re-read this often, in seconds; 0 turns that off
       refreshInterval: 30,
@@ -205,6 +211,12 @@ export class FtuiNeatoMap extends FtuiElement {
         this.view = null;
         this.requestUpdate({});
         break;
+      case 'text-size':
+        this.setSize('--neato-map-font-size', value);
+        break;
+      case 'arrow-size':
+        this.setSize('--neato-map-arrow-size', value);
+        break;
       case 'pad':
       case 'show-track':
       case 'show-points':
@@ -212,6 +224,21 @@ export class FtuiNeatoMap extends FtuiElement {
       case 'show-controls':
         this.requestUpdate({});
         break;
+    }
+  }
+
+  /**
+   * A size from the markup, as a CSS custom property on the element itself.
+   *
+   * A bare number means em, the way margin and padding work in FTUI; anything
+   * else is passed through, so '14px', '1.2rem' and '120%' all work. Empty
+   * hands the decision back to the stylesheet.
+   */
+  setSize(name, value) {
+    if (value === null || value === '') {
+      this.style.removeProperty(name);
+    } else {
+      this.style.setProperty(name, isNumeric(value) ? value + 'em' : value);
     }
   }
 
@@ -441,9 +468,24 @@ export class FtuiNeatoMap extends FtuiElement {
 
   onPointerDown(event) {
     this.swipeStart = { x: event.clientX, y: event.clientY, time: Date.now() };
+    // Hold on to the pointer: the map is an SVG, and a drag that starts on it
+    // would otherwise end somewhere else - or not end at all.
+    try {
+      this.stage.setPointerCapture(event.pointerId);
+    } catch (err) {
+      // Not every pointer can be captured; the swipe then works as before.
+    }
   }
 
   onPointerUp(event) {
+    try {
+      if (this.stage.hasPointerCapture(event.pointerId)) {
+        this.stage.releasePointerCapture(event.pointerId);
+      }
+    } catch (err) {
+      // see onPointerDown
+    }
+
     if (!this.swipeStart) {
       return;
     }
