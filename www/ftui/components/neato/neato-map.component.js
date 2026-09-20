@@ -23,6 +23,28 @@ import { FtuiElement } from '../element.component.js';
 import { isNumeric } from '../../modules/ftui/ftui.helper.js';
 import * as track from './neato-track.js';
 
+/*
+* Attributes that are nothing but a CSS custom property on the element.
+*
+* A size takes a bare number as em, the way margin and padding do in FTUI. A
+* colour takes what CSS takes, and on top of that the colour names FTUI uses
+* elsewhere - 'primary', 'warning', 'red' - which resolve through the theme.
+*/
+const STYLE_ATTRIBUTES = {
+  'text-size': ['--neato-map-font-size', 'size'],
+  'arrow-size': ['--neato-map-arrow-size', 'size'],
+  'min-height': ['--neato-map-min-height', 'size'],
+  'wall-color': ['--neato-map-wall-color', 'color'],
+  'free-color': ['--neato-map-free-color', 'color'],
+  'point-color': ['--neato-map-point-color', 'color'],
+  'track-color': ['--neato-map-track-color', 'color'],
+  'start-color': ['--neato-map-start-color', 'color'],
+  'end-color': ['--neato-map-end-color', 'color'],
+  'text-color': ['--neato-map-text-color', 'color'],
+  'background-color': ['--neato-map-background', 'color'],
+  'free-opacity': ['--neato-map-free-opacity', 'plain'],
+};
+
 const TEXTS = {
   de: {
     loading: 'Karte wird geladen …',
@@ -31,6 +53,8 @@ const TEXTS = {
     failed: 'Aufzeichnung nicht lesbar',
     noList: 'Aufzeichnungen nicht auflistbar',
     running: 'läuft',
+    older: 'älter',
+    newer: 'neuer',
     minutes: 'min',
     metres: 'm',
   },
@@ -41,6 +65,8 @@ const TEXTS = {
     failed: 'Recording not readable',
     noList: 'Cannot list the recordings',
     running: 'running',
+    older: 'older',
+    newer: 'newer',
     minutes: 'min',
     metres: 'm',
   },
@@ -78,8 +104,8 @@ export class FtuiNeatoMap extends FtuiElement {
     this.noteElement = this.shadowRoot.querySelector('.note');
     this.titleElement = this.shadowRoot.querySelector('.title');
     this.subElement = this.shadowRoot.querySelector('.sub');
-    this.previousButton = this.shadowRoot.querySelector('.previous');
-    this.nextButton = this.shadowRoot.querySelector('.next');
+    this.olderButton = this.shadowRoot.querySelector('.older');
+    this.newerButton = this.shadowRoot.querySelector('.newer');
 
     this.onVisibilityChanged = () => {
       this.startPolling();
@@ -88,8 +114,10 @@ export class FtuiNeatoMap extends FtuiElement {
         this.requestUpdate({});
       }
     };
-    this.previousButton.addEventListener('click', () => this.step(-1));
-    this.nextButton.addEventListener('click', () => this.step(1));
+    // Time runs to the right: the arrow to the right goes towards the newest
+    // run, the one to the left back into the past.
+    this.olderButton.addEventListener('click', () => this.step(1));
+    this.newerButton.addEventListener('click', () => this.step(-1));
     this.stage.addEventListener('pointerdown', (event) => this.onPointerDown(event));
     this.stage.addEventListener('pointerup', (event) => this.onPointerUp(event));
     this.stage.addEventListener('pointercancel', () => { this.swipeStart = null; });
@@ -126,6 +154,17 @@ export class FtuiNeatoMap extends FtuiElement {
       // em, as elsewhere in FTUI; any CSS length works as well.
       textSize: '',
       arrowSize: '',
+      minHeight: '',
+      // Colours. A CSS colour, or one of FTUI's colour names.
+      wallColor: '',
+      freeColor: '',
+      freeOpacity: '',
+      pointColor: '',
+      trackColor: '',
+      startColor: '',
+      endColor: '',
+      textColor: '',
+      backgroundColor: '',
       locale: '',
       // a run in progress is re-read this often, in seconds; 0 turns that off
       refreshInterval: 30,
@@ -142,14 +181,14 @@ export class FtuiNeatoMap extends FtuiElement {
       <div class="note"></div>
     </div>
     <div class="bar">
-      <button class="previous" type="button" title="neuer">
+      <button class="older" type="button">
         <svg viewBox="0 0 24 24"><polyline points="15,5 8,12 15,19"/></svg>
       </button>
       <div class="info">
         <span class="title"></span>
         <span class="sub"></span>
       </div>
-      <button class="next" type="button" title="älter">
+      <button class="newer" type="button">
         <svg viewBox="0 0 24 24"><polyline points="9,5 16,12 9,19"/></svg>
       </button>
     </div>`;
@@ -169,6 +208,10 @@ export class FtuiNeatoMap extends FtuiElement {
 
   onAttributeChanged(name, value, oldValue) {
     if (value === oldValue) {
+      return;
+    }
+    if (STYLE_ATTRIBUTES[name]) {
+      this.setStyleAttribute(name, value);
       return;
     }
     switch (name) {
@@ -211,12 +254,6 @@ export class FtuiNeatoMap extends FtuiElement {
         this.view = null;
         this.requestUpdate({});
         break;
-      case 'text-size':
-        this.setSize('--neato-map-font-size', value);
-        break;
-      case 'arrow-size':
-        this.setSize('--neato-map-arrow-size', value);
-        break;
       case 'pad':
       case 'show-track':
       case 'show-points':
@@ -228,18 +265,26 @@ export class FtuiNeatoMap extends FtuiElement {
   }
 
   /**
-   * A size from the markup, as a CSS custom property on the element itself.
+   * A size or colour from the markup, as a CSS custom property on the element.
    *
-   * A bare number means em, the way margin and padding work in FTUI; anything
-   * else is passed through, so '14px', '1.2rem' and '120%' all work. Empty
-   * hands the decision back to the stylesheet.
+   * Empty hands the decision back to the stylesheet, which is where the
+   * defaults live - setting an attribute back to '' undoes it.
    */
-  setSize(name, value) {
+  setStyleAttribute(name, value) {
+    const [property, kind] = STYLE_ATTRIBUTES[name];
+
     if (value === null || value === '') {
-      this.style.removeProperty(name);
-    } else {
-      this.style.setProperty(name, isNumeric(value) ? value + 'em' : value);
+      this.style.removeProperty(property);
+      return;
     }
+
+    let css = value;
+    if (kind === 'size') {
+      css = isNumeric(value) ? value + 'em' : value;
+    } else if (kind === 'color') {
+      css = cssColor(value);
+    }
+    this.style.setProperty(property, css);
   }
 
   get texts() {
@@ -496,17 +541,18 @@ export class FtuiNeatoMap extends FtuiElement {
     this.swipeStart = null;
 
     if (swipe) {
-      // Dragging to the left pulls the next, older recording into view.
-      this.step(dx < 0 ? 1 : -1);
+      // The runs lie on a time line, the older ones to the left: dragging to
+      // the left pulls a newer one into view, to the right an older one.
+      this.step(dx < 0 ? -1 : 1);
     }
   }
 
   onKeyDown(event) {
     if (event.key === 'ArrowLeft') {
-      this.step(-1);
+      this.step(1);                      // back in time
       event.preventDefault();
     } else if (event.key === 'ArrowRight') {
-      this.step(1);
+      this.step(-1);                     // towards the newest run
       event.preventDefault();
     }
   }
@@ -560,8 +606,11 @@ export class FtuiNeatoMap extends FtuiElement {
     const texts = this.texts;
     const locale = this.locale || document.documentElement.lang || undefined;
 
-    this.previousButton.disabled = this.index <= 0;
-    this.nextButton.disabled = this.index >= count - 1;
+    // index 0 is the newest run, so the arrow to the right runs out first.
+    this.newerButton.disabled = this.index <= 0;
+    this.newerButton.title = texts.newer;
+    this.olderButton.disabled = this.index >= count - 1;
+    this.olderButton.title = texts.older;
 
     this.titleElement.textContent = parsed.date
       ? parsed.date.toLocaleString(locale, {
@@ -713,6 +762,24 @@ export class FtuiNeatoMap extends FtuiElement {
     this.view.grid = track.occupancy(this.session.scans, cell, this.view.points);
     this.view.cells = track.classify(this.view.grid, Number(this.threshold), Number(this.minSeen));
   }
+}
+
+/**
+ * A colour as CSS can use it.
+ *
+ * '#9ec9f0', 'rgb(...)' and 'var(--x)' are passed through. A bare name is
+ * looked up the way FTUI's styles/colors.css does it: 'primary' is the theme's
+ * --primary-color, 'red' its --red, and whatever the theme does not know stays
+ * the plain CSS colour of that name.
+ */
+function cssColor(value) {
+  const name = String(value).trim();
+
+  if (!/^[a-z][a-z0-9-]*$/i.test(name)) {
+    return name;
+  }
+
+  return `var(--${name}-color, var(--${name}, ${name}))`;
 }
 
 window.customElements.define('ftui-neato-map', FtuiNeatoMap);

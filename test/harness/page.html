@@ -43,6 +43,15 @@
                       files="Staubsauger-2026-09-20_11-59-11.jsonl,Staubsauger-2026-09-19_09-30-00.jsonl,Staubsauger-2026-09-18_14-05-00.jsonl"></ftui-neato-map>
     </ftui-grid-tile>
 
+    <!-- Eigene Farben, damit der Screenshot zeigt, was die Attribute tun. -->
+    <ftui-grid-tile id="painted" row="5" col="4" width="3" height="2">
+      <ftui-neato-map id="map-painted"
+                      wall-color="danger" track-color="#7fd3ff"
+                      free-color="rgb(120, 140, 160)" free-opacity="0.25"
+                      show-info="false"
+                      file="Staubsauger-2026-09-20_11-59-11.jsonl"></ftui-neato-map>
+    </ftui-grid-tile>
+
     <!-- The raw endpoints instead of the grid, in a tile of another shape. -->
     <ftui-grid-tile id="points" row="5" col="1" width="3" height="2">
       <ftui-neato-map id="map-points" show-points show-info="false"

@@ -166,8 +166,11 @@ function probe(page, id) {
       points: svg ? svg.querySelectorAll('g.points rect').length : 0,
       track: svg ? svg.querySelectorAll('polyline.track').length : 0,
       viewBox: svg ? svg.getAttribute('viewBox') : '',
-      previousDisabled: root.querySelector('.previous').disabled,
-      nextDisabled: root.querySelector('.next').disabled,
+      newerDisabled: root.querySelector('.newer').disabled,
+      olderDisabled: root.querySelector('.older').disabled,
+      // Which arrow sits where, in page coordinates.
+      olderLeft: root.querySelector('.older').getBoundingClientRect().left,
+      newerLeft: root.querySelector('.newer').getBoundingClientRect().left,
       box: { width: box.width, height: box.height, top: box.top, left: box.left },
       tile: { width: tile.width, height: tile.height, top: tile.top, left: tile.left, bottom: tile.bottom },
       svgBox: svgBox ? { width: svgBox.width, height: svgBox.height } : null,
@@ -180,11 +183,11 @@ function probe(page, id) {
       parentBottom: tile.bottom,
       bottom: box.bottom,
       fontSize: parseFloat(getComputedStyle(element).fontSize),
-      arrowBox: root.querySelector('.next').getBoundingClientRect().width,
+      arrowBox: root.querySelector('.newer').getBoundingClientRect().width,
       // The chevron inside the button, which must stay inside it.
       arrowIcon: (() => {
-        const icon = root.querySelector('.next svg').getBoundingClientRect();
-        const button = root.querySelector('.next').getBoundingClientRect();
+        const icon = root.querySelector('.newer svg').getBoundingClientRect();
+        const button = root.querySelector('.newer').getBoundingClientRect();
         return {
           width: icon.width,
           height: icon.height,
@@ -282,45 +285,60 @@ test('the recordings can be paged through', { skip: missing.join(', ') || false 
     let map = await probe(page, 'map-listed');
     assert.equal(map.sessions, 3);
     assert.equal(map.index, 0);
-    assert.equal(map.previousDisabled, true);
     assert.ok(map.sub.includes('1/3'), map.sub);
     assert.equal(map.live, true, 'the newest recording has no summary: still running');
 
+    // Time runs to the right: the newest run is on display, so the arrow to
+    // the right has nowhere to go and the one to the left leads into the past.
+    assert.ok(map.olderLeft < map.newerLeft, 'the arrows are the wrong way round');
+    assert.equal(map.newerDisabled, true, 'there is nothing newer than the newest run');
+    assert.equal(map.olderDisabled, false);
+
     const first = map.viewBox;
-    map = await click('.next');
+    map = await click('.older');
     assert.equal(map.index, 1);
     assert.ok(map.sub.includes('2/3'), map.sub);
     assert.ok(map.sub.includes('137,8') || map.sub.includes('137.8'), map.sub);
     assert.equal(map.live, false, 'a finished recording has its summary');
-    assert.equal(map.previousDisabled, false);
+    assert.equal(map.newerDisabled, false);
 
-    map = await click('.next');
+    map = await click('.older');
     assert.equal(map.index, 2);
-    assert.equal(map.nextDisabled, true);
+    assert.equal(map.olderDisabled, true, 'there is nothing older than the oldest run');
     assert.ok(map.sub.includes('42,5') || map.sub.includes('42.5'), map.sub);
     // Four scans instead of ten is a smaller map.
     assert.notEqual(map.viewBox, first);
     await context.shot('paged.png');
 
-    map = await click('.previous');
+    map = await click('.newer');
     assert.equal(map.index, 1);
 
-    // Keys and a swipe do the same as the buttons.
+    // The arrow keys follow the arrows: right towards the newest run.
     await page.evaluate(() => document.querySelector('#map-listed')
       .shadowRoot.querySelector('.stage').focus());
+    await page.keyboard.press('ArrowRight');
+    await page.waitForTimeout(400);
+    assert.equal((await probe(page, 'map-listed')).index, 0, 'ArrowRight should show a newer run');
+
     await page.keyboard.press('ArrowLeft');
     await page.waitForTimeout(400);
-    assert.equal((await probe(page, 'map-listed')).index, 0);
+    assert.equal((await probe(page, 'map-listed')).index, 1, 'ArrowLeft should show an older run');
 
+    // And so does the swipe: dragging to the right pulls an older run in.
     const stage = await page.evaluateHandle(() => document.querySelector('#map-listed')
       .shadowRoot.querySelector('.stage'));
     const area = await stage.boundingBox();
-    await page.mouse.move(area.x + area.width * 0.75, area.y + area.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(area.x + area.width * 0.25, area.y + area.height / 2, { steps: 8 });
-    await page.mouse.up();
-    await page.waitForTimeout(400);
-    assert.equal((await probe(page, 'map-listed')).index, 1, 'swiping left shows the older run');
+    const swipe = async (from, to) => {
+      await page.mouse.move(area.x + area.width * from, area.y + area.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(area.x + area.width * to, area.y + area.height / 2, { steps: 8 });
+      await page.mouse.up();
+      await page.waitForTimeout(400);
+      return (await probe(page, 'map-listed')).index;
+    };
+
+    assert.equal(await swipe(0.25, 0.75), 2, 'swiping right shows the older run');
+    assert.equal(await swipe(0.75, 0.25), 1, 'swiping left shows the newer run');
 
     assert.deepEqual(context.problems, []);
   } finally {
@@ -375,7 +393,9 @@ test('a refused Perl command still shows the running session', { skip: missing.j
     assert.equal(bound.sessions, 1);
     assert.ok(bound.walls > 50);
     assert.equal(bound.note, '');
-    assert.equal(bound.nextDisabled, true);
+    // One recording: neither arrow leads anywhere.
+    assert.equal(bound.olderDisabled, true);
+    assert.equal(bound.newerDisabled, true);
   } finally {
     await context.close();
   }
@@ -440,11 +460,71 @@ test('in a popup the map fills the window and the sizes are settable',
 
       // Blättern geht im Popup wie in der Kachel.
       await context.page.evaluate(() => document.querySelector('#map-popup')
-        .shadowRoot.querySelector('.next').click());
+        .shadowRoot.querySelector('.older').click());
       await settled(context.page);
       assert.equal((await probe(context.page, 'map-popup')).index, 1);
 
       await context.shot('popup.png');
+    } finally {
+      await context.close();
+    }
+  });
+
+test('the colours of the map can be set from the markup',
+  { skip: missing.join(', ') || false }, async () => {
+    const context = await open();
+
+    try {
+      const colours = await context.page.evaluate(async () => {
+        const map = document.querySelector('#map-listed');
+        const root = map.shadowRoot;
+        const read = () => ({
+          wall: getComputedStyle(root.querySelector('g.wall rect')).fill,
+          track: getComputedStyle(root.querySelector('polyline.track')).stroke,
+          free: getComputedStyle(root.querySelector('g.free')).opacity,
+          text: getComputedStyle(map).color,
+        });
+
+        const before = read();
+
+        // A plain CSS colour, a name from FTUI's theme, and a number.
+        map.setAttribute('wall-color', '#ff0000');
+        // 'primary', because the track is 'warning' by default and a test
+        // that passes either way is no test.
+        map.setAttribute('track-color', 'primary');
+        map.setAttribute('free-opacity', '0.5');
+        map.setAttribute('text-color', 'rgb(1, 2, 3)');
+        const set = read();
+
+        map.setAttribute('wall-color', '');
+        map.setAttribute('track-color', '');
+        map.setAttribute('free-opacity', '');
+        map.setAttribute('text-color', '');
+        const cleared = read();
+
+        return {
+          before, set, cleared,
+          themePrimary: getComputedStyle(document.body).getPropertyValue('--primary-color').trim(),
+        };
+      });
+
+      assert.equal(colours.set.wall, 'rgb(255, 0, 0)');
+      assert.equal(colours.set.free, '0.5');
+      assert.equal(colours.set.text, 'rgb(1, 2, 3)');
+      // 'primary' means what it means everywhere else in FTUI.
+      assert.ok(colours.themePrimary.length > 0, 'the theme has no --primary-color');
+      assert.notEqual(colours.set.track, colours.before.track);
+      assert.equal(colours.set.track, await context.page.evaluate((value) => {
+        const probeElement = document.createElement('span');
+        probeElement.style.color = value;
+        document.body.appendChild(probeElement);
+        const resolved = getComputedStyle(probeElement).color;
+        probeElement.remove();
+        return resolved;
+      }, colours.themePrimary));
+
+      // Empty is back to the stylesheet's defaults.
+      assert.deepEqual(colours.cleared, colours.before);
     } finally {
       await context.close();
     }
@@ -459,7 +539,7 @@ test('a size can also be given in any CSS length',
         const map = document.querySelector('#map-listed');
         const read = () => ({
           font: parseFloat(getComputedStyle(map).fontSize),
-          arrow: map.shadowRoot.querySelector('.next').getBoundingClientRect().width,
+          arrow: map.shadowRoot.querySelector('.newer').getBoundingClientRect().width,
         });
         map.setAttribute('text-size', '22px');
         map.setAttribute('arrow-size', '44px');

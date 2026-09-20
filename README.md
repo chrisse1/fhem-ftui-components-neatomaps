@@ -57,8 +57,12 @@ Mehr ist nicht nötig: FTUI lädt zu `<ftui-neato-map>` von sich aus
 
 Die Karte nimmt die Größe der Kachel an – den ganzen Platz unterhalb des
 Kachelkopfs – und zeichnet sich bei jeder Größenänderung neu, ohne die Daten
-noch einmal zu lesen. Geblättert wird mit den Pfeilen, mit Wischen nach links
-und rechts oder mit den Pfeiltasten. Ganz links steht der neueste Lauf.
+noch einmal zu lesen.
+
+Geblättert wird mit den Pfeilen, mit Wischen oder mit den Pfeiltasten, und
+zwar entlang der Zeit: **rechts geht Richtung Gegenwart, links in die
+Vergangenheit.** Beim Öffnen steht der neueste Lauf da, der rechte Pfeil ist
+also grau, bis man einmal nach links geblättert hat.
 
 `[track-file]` und `[state]` sind nicht Pflicht, aber nützlich: das erste meldet
 einen neuen Lauf, sobald er beginnt, das zweite schaltet die Live-Ansicht ein.
@@ -90,6 +94,16 @@ Solange `state` auf `cleaning` steht, wird die laufende Aufzeichnung alle
 | `show-controls` | an | Die Pfeile zum Blättern. |
 | `text-size` | `0.8` | Schriftgröße der Zeile unter der Karte. Eine bloße Zahl ist em (wie bei `margin` in FTUI), sonst gilt jede CSS-Länge: `text-size="1.4"`, `text-size="16px"`. |
 | `arrow-size` | `1.9` | Kantenlänge der Blätterpfeile, in denselben Einheiten. Ohne Angabe wachsen sie mit `text-size` mit. |
+| `min-height` | `4` | Wie flach die Kartenfläche schrumpfen darf, wenn der Platz knapp wird. |
+| `wall-color` | `primary` | Farbe der Wände. |
+| `free-color` | Textfarbe | Farbe der befahrenen Fläche. |
+| `free-opacity` | `0.16` | Wie deutlich die Fläche gegen den Untergrund steht. |
+| `track-color` | `warning` | Farbe der gefahrenen Spur. |
+| `point-color` | `info` | Farbe der Endpunkte bei `show-points`. |
+| `start-color` | `success` | Punkt am Anfang des Laufs. |
+| `end-color` | `danger` | Punkt am Ende – und der Punkt für den Roboter, solange er fährt. |
+| `text-color` | `light` | Farbe der Zeile und der Pfeile. |
+| `background-color` | durchsichtig | Untergrund der Kartenfläche; ohne Angabe scheint die Kachel durch. |
 | `locale` | Seitensprache | `de` oder `en`, für Datum und die wenigen Texte. |
 
 In einem Popup ist die Kachelschrift oft zu klein; dort lohnen beide:
@@ -104,25 +118,35 @@ In einem Popup ist die Kachelschrift oft zu klein; dort lohnen beide:
 </ftui-popup>
 ```
 
-Die Karte füllt das Popup-Fenster genauso wie eine Kachel. Wer lieber in CSS
-bleibt: `text-size` und `arrow-size` setzen nichts weiter als
-`--neato-map-font-size` und `--neato-map-arrow-size`, die sich auch direkt
-setzen lassen – etwa für alle Karten einer Seite auf einmal.
+Die Karte füllt das Popup-Fenster genauso wie eine Kachel.
 
-Farben kommen aus dem FTUI-Thema und lassen sich einzeln setzen:
+### Farben
+
+Die Farbattribute nehmen, was CSS nimmt – und zusätzlich die Farbnamen, die
+FTUI überall sonst verwendet (`primary`, `warning`, `danger`, `red`, …). Die
+kommen aus dem Thema, passen sich also mit ihm an:
 
 ```html
-<ftui-neato-map style="--neato-map-wall-color: #9ec9f0;
-                       --neato-map-track-color: #ffb454;
-                       --neato-map-free-opacity: 0.22"></ftui-neato-map>
+<ftui-neato-map device="Staubsauger"
+                wall-color="info"
+                track-color="#ffb454"
+                free-color="rgb(120, 130, 140)"
+                free-opacity="0.22"
+                end-color="danger"></ftui-neato-map>
 ```
 
-Es gibt `--neato-map-wall-color`, `--neato-map-free-color`,
+Ohne Angabe bleibt es beim Thema: Wände in `primary`, Spur in `warning`,
+Anfang in `success`, Ende in `danger`. Ein Attribut wieder auf `""` zu setzen
+stellt den Standard zurück.
+
+Jedes dieser Attribute setzt nichts weiter als eine CSS-Variable, die sich auch
+direkt setzen lässt – etwa für alle Karten einer Seite auf einmal:
+`--neato-map-wall-color`, `--neato-map-free-color`,
 `--neato-map-free-opacity`, `--neato-map-point-color`,
 `--neato-map-track-color`, `--neato-map-start-color`, `--neato-map-end-color`,
 `--neato-map-background`, `--neato-map-text-color`, `--neato-map-font-size`,
-`--neato-map-arrow-size`, `--neato-map-min-height` (wie flach die Karte
-schrumpfen darf, wenn der Platz knapp wird) und `--neato-map-button-background`.
+`--neato-map-arrow-size`, `--neato-map-min-height` und
+`--neato-map-button-background`.
 
 ## Wie die Liste der Läufe zustande kommt
 

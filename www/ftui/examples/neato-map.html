@@ -49,13 +49,15 @@
       <ftui-label>Karte gross</ftui-label>
     </ftui-grid-tile>
 
-    <!-- Die rohen Endpunkte statt des Belegungsgitters, in eigenen Farben. -->
+    <!-- Die rohen Endpunkte statt des Belegungsgitters, in eigenen Farben.
+         Farbnamen wie 'info' sind die des FTUI-Themas, daneben geht jede
+         CSS-Farbe. -->
     <ftui-grid-tile row="4" col="7" width="3" height="2">
       <ftui-grid-header>Punkte</ftui-grid-header>
       <ftui-neato-map device="Staubsauger"
                       [track-file]="Staubsauger:trackFile"
                       show-points show-track="false"
-                      style="--neato-map-point-color: #9ec9f0"></ftui-neato-map>
+                      point-color="info"></ftui-neato-map>
     </ftui-grid-tile>
 
   </ftui-grid>
