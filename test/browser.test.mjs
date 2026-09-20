@@ -307,6 +307,23 @@ test('the sessions of a device come from FHEM', { skip: missing.join(', ') || fa
     assert.ok(!perl.includes(';'), 'a semicolon would cut the command in half: ' + perl);
     assert.ok(perl.includes('Staubsauger-*.jsonl'), perl);
     assert.ok(perl.includes('./www/neato/'), perl);
+
+    // Three maps on the page, one question.
+    const listings = context.fhem.state.commands.filter(command => command.startsWith('{'));
+    assert.equal(listings.length, 1, 'the maps did not share the listing: ' + listings.length);
+
+    // www/neato is served by FHEMWEB as <fhemweb>/neato - and that is where
+    // the recording was read from, whatever directory the page lies in.
+    assert.ok(context.fhem.state.requests.some(url => url.startsWith('/fhem/neato/Staubsauger-')),
+      'the recording was not read from /fhem/neato/');
+
+    // The folder follows track-dir, since that is the one FHEM writes to.
+    const elsewhere = await context.page.evaluate(async () => {
+      const map = document.querySelector('#map-bound');
+      map.setAttribute('track-dir', './www/staubsauger');
+      return map.url('a.jsonl', false);
+    });
+    assert.ok(elsewhere.endsWith('/fhem/staubsauger/a.jsonl'), elsewhere);
   } finally {
     await context.close();
   }

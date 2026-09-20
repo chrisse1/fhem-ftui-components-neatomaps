@@ -45,6 +45,12 @@ const TEXTS = {
   },
 };
 
+// Several maps of the same device on one page ask the same question at the
+// same moment. They share the answer for as long as it takes the page to come
+// up; a moment later a new run would be listed again.
+const LIST_CACHE_MS = 3000;
+const listCache = new Map();
+
 // Drawing every one of 80 000 endpoints as its own rectangle is a slow page,
 // and at tile size nobody sees the difference. The occupancy grid is not
 // thinned out this way - it counts all of them.
@@ -61,6 +67,7 @@ export class FtuiNeatoMap extends FtuiElement {
     this.view = null;            // points and grid of that session, cached
     this.note = '';              // shown instead of a map
     this.listFailed = false;
+    this.derivedDir = '';      // where the files are served, once worked out
     this.pending = null;
     this.busy = false;
     this.pollTimer = null;
@@ -95,8 +102,9 @@ export class FtuiNeatoMap extends FtuiElement {
       files: '',
       index: 0,
       limit: 20,
-      // where the recordings are
-      dir: '../neato/',
+      // where the recordings are. An empty dir is derived from track-dir and
+      // the address of FHEMWEB, which holds wherever the page itself lies.
+      dir: '',
       trackDir: './www/neato',
       listCommand: '',
       // bindable readings of the device
@@ -158,13 +166,19 @@ export class FtuiNeatoMap extends FtuiElement {
       return;
     }
     switch (name) {
-      case 'device':
       case 'dir':
+        this.derivedDir = '';
+        this.requestUpdate({ list: true });
+        break;
+      case 'device':
       case 'file':
       case 'files':
       case 'limit':
       case 'list-command':
+        this.requestUpdate({ list: true });
+        break;
       case 'track-dir':
+        this.derivedDir = '';
         this.requestUpdate({ list: true });
         break;
       case 'track-file': {
@@ -303,7 +317,7 @@ export class FtuiNeatoMap extends FtuiElement {
       names = this.files.split(/[\r\n,]+/);
     } else {
       try {
-        names = (await this.askFhem(this.listCmd)).split(/[\r\n,]+/);
+        names = (await this.sharedList(this.listCmd)).split(/[\r\n,]+/);
         // The glob already asks for this device only; a hand written
         // list-command may be less careful.
         names = names.filter(name => !this.device || name.includes(this.device + '-'));
@@ -330,7 +344,7 @@ export class FtuiNeatoMap extends FtuiElement {
 
   async loadSession(name) {
     const live = this.isRunning && this.index === 0;
-    const url = this.url(name, live);
+    const url = await this.url(name, live);
     const response = await fetch(url, { cache: live ? 'no-store' : 'default', credentials: 'same-origin' });
 
     if (!response.ok) {
@@ -344,11 +358,60 @@ export class FtuiNeatoMap extends FtuiElement {
     this.emitEvent('sessionLoaded', { name, session: this.session });
   }
 
-  url(name, noCache) {
-    const dir = (this.dir || '').replace(/\/*$/, this.dir ? '/' : '');
+  async url(name, noCache) {
     // FHEMWEB strips a query from the file name and serves it uncached when it
     // sees 'nocache' - which is what a run in progress needs.
-    return dir + encodeURIComponent(name) + (noCache ? '?nocache=' + Date.now() : '');
+    return (await this.baseUrl()) + encodeURIComponent(name)
+      + (noCache ? '?nocache=' + Date.now() : '');
+  }
+
+  /**
+   * The URL the recordings are served under.
+   *
+   * FHEMWEB hands out everything below www/: the sessions in www/neato end up
+   * at <fhemweb>/neato/. Taking that address from FTUI rather than writing a
+   * relative path keeps it right for a page in a sub-directory, too. Without
+   * FTUI - or without an address to ask for - it falls back to a path relative
+   * to the page, which is what a plain FTUI installation needs.
+   */
+  async baseUrl() {
+    if (this.dir) {
+      return this.dir.replace(/\/*$/, '/');
+    }
+    if (this.derivedDir) {
+      return this.derivedDir;
+    }
+
+    const folder = (this.trackDir || './www/neato').replace(/\/+$/, '').split('/').pop();
+    let base = '../' + folder + '/';
+
+    try {
+      const { fhemService } = await import('../../modules/ftui/fhem.service.js');
+      const fhemDir = fhemService.config && fhemService.config.fhemDir;
+      if (fhemDir) {
+        base = fhemDir.replace(/\/*$/, '/') + folder + '/';
+      }
+    } catch (err) {
+      // No FTUI around: the relative path is the best guess there is.
+    }
+
+    this.derivedDir = base;
+    return base;
+  }
+
+  /** The listing, asked once per command and shared with the other maps. */
+  sharedList(command) {
+    const cached = listCache.get(command);
+    if (cached && Date.now() - cached.at < LIST_CACHE_MS) {
+      return cached.answer;
+    }
+
+    const answer = this.askFhem(command);
+    listCache.set(command, { at: Date.now(), answer });
+    // A failed listing is not worth keeping: the next attempt should really
+    // ask again.
+    answer.catch(() => listCache.delete(command));
+    return answer;
   }
 
   /** Sends a command to FHEM through FTUI's backend, if there is one. */

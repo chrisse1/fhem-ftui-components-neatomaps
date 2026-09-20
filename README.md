@@ -23,7 +23,11 @@ Am Modul ändert diese Komponente nichts.
 
 * Die Sitzungsdateien müssen unter `www/` liegen, sonst gibt FHEMWEB sie nicht
   heraus. Der Standard `trackDir` (`./www/neato`, also `/opt/fhem/www/neato/`)
-  passt; FHEMWEB liefert das als `/fhem/neato/<Datei>.jsonl` aus.
+  passt: FHEMWEB liefert das als `/fhem/neato/<Datei>.jsonl` aus, mit
+  `Content-Type: text/jsonl`. Die Komponente bildet diese Adresse selbst aus
+  `track-dir` und der FHEMWEB-Adresse, die sie von FTUI erfragt – damit stimmt
+  sie auch für eine Seite in einem Unterordner. Liegt `trackDir` woanders unter
+  `www/`, reicht `track-dir="./www/<Ordner>"`.
 
 ## Installation
 
@@ -66,7 +70,7 @@ Solange `state` auf `cleaning` steht, wird die laufende Aufzeichnung alle
 | Attribut | Standard | Bedeutung |
 |---|---|---|
 | `device` | – | Name des NeatoLocal-Geräts. Bestimmt, welche Dateien aufgelistet werden. |
-| `dir` | `../neato/` | URL-Verzeichnis der Sitzungsdateien, relativ zur Seite. |
+| `dir` | aus `track-dir` | URL-Verzeichnis der Sitzungsdateien. Leer heißt: aus dem letzten Teil von `track-dir` und der FHEMWEB-Adresse bilden, also `/fhem/neato/`. Nur setzen, wenn die Dateien woanders ausgeliefert werden. |
 | `track-dir` | `./www/neato` | Dasselbe Verzeichnis, wie FHEM es sieht – nur für die Dateiliste. Entspricht dem Attribut `trackDir` des Geräts. |
 | `track-file` | – | Reading `trackFile`, zum Binden. Nennt die laufende bzw. letzte Sitzung. |
 | `state` | – | Reading `state`, zum Binden. `cleaning` schaltet die Live-Ansicht ein. |
