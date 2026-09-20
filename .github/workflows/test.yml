@@ -6,8 +6,8 @@ on:
 
 jobs:
   maths:
-    # The map maths against the numbers of the Python reference - no browser,
-    # no FTUI, no network.
+    # The map maths against the numbers of the Python reference, and the
+    # update index - no browser, no FTUI, no network.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,6 +15,8 @@ jobs:
         with:
           node-version: '22'
       - run: node --test test/session.test.mjs
+      # The index FHEM's update reads - stale sizes mean a broken install.
+      - run: node --test test/controls.test.mjs
 
   browser:
     # The component in a real FTUI page: tile size, paging, the list from FHEM.

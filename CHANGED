@@ -1,0 +1,11 @@
+# Was sich geaendert hat. FHEM zeigt beim "update" alles bis zur ersten
+# Leerzeile an - neue Eintraege gehoeren also nach oben, und zwischen den
+# Bloecken steht genau eine Leerzeile. Eine Leerzeile direkt hier waere das
+# Ende der Anzeige, bevor sie angefangen hat.
+2026-09-20 ftui-neato-map 1.0.0
+ - erste Fassung: Belegungsgitter aus den Lidar-Scans, gefahrene Spur,
+   Blaettern durch die aufgezeichneten Laeufe, Live-Ansicht waehrend einer
+   Reinigung
+ - Groessen und Farben als Attribute (text-size, arrow-size, wall-color,
+   track-color ...), Farbnamen des FTUI-Themas eingeschlossen
+ - installierbar ueber FHEMs update-Mechanismus

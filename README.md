@@ -31,7 +31,27 @@ Am Modul ändert diese Komponente nichts.
 
 ## Installation
 
-Das Verzeichnis `components/neato/` in die FTUI-Installation kopieren:
+Über FHEMs eigenen Update-Mechanismus, in der FHEM-Kommandozeile:
+
+```
+update add https://raw.githubusercontent.com/chrisse1/fhem-ftui-components-neatomaps/HEAD/controls_neatomaps.txt
+update all https://raw.githubusercontent.com/chrisse1/fhem-ftui-components-neatomaps/HEAD/controls_neatomaps.txt
+```
+
+Das erste Kommando merkt sich die Quelle (in `FHEM/controls.txt`), das zweite
+holt die Dateien. Ab da genügt ein `update`, das dann alle eingetragenen
+Quellen durchgeht. Ein `shutdown restart` ist nicht nötig – es sind nur
+Dateien unter `www/`; im Browser kann aber ein beherzter Reload nötig sein,
+damit die alte Fassung nicht aus dem Cache kommt.
+
+Was dabei wohin geht:
+
+| Datei | |
+|---|---|
+| `www/ftui/components/neato/` | die Komponente, drei Dateien |
+| `www/ftui/examples/neato-map.html` | Beispielseite, **nur angelegt** (`CRE`), nie überschrieben – sie enthält einen Gerätenamen, den man anpasst |
+
+Wer lieber von Hand arbeitet, kopiert dasselbe Verzeichnis selbst:
 
 ```sh
 git clone https://github.com/chrisse1/fhem-ftui-components-neatomaps
@@ -39,9 +59,8 @@ cp -r fhem-ftui-components-neatomaps/www/ftui/components/neato \
       /opt/fhem/www/ftui/components/
 ```
 
-Mehr ist nicht nötig: FTUI lädt zu `<ftui-neato-map>` von sich aus
-`components/neato/neato-map.component.js`. Die Beispielseite
-`www/ftui/examples/neato-map.html` kann daneben, sie ist nur zum Anschauen.
+So oder so ist mehr nicht nötig: FTUI lädt zu `<ftui-neato-map>` von sich aus
+`components/neato/neato-map.component.js`.
 
 ## Benutzung
 
@@ -203,8 +222,21 @@ nicht.
 Die Rechnung lässt sich ohne Roboter, ohne FHEM und ohne Browser prüfen:
 
 ```sh
-node --test 'test/*.test.mjs'          # nur die Karten-Mathematik
+node --test test/session.test.mjs      # nur die Karten-Mathematik
+node --test test/controls.test.mjs     # der Index für FHEMs update
 ```
+
+`controls_neatomaps.txt` nennt Größe und Zeitstempel jeder Datei, und FHEM
+verwirft eine Datei, deren Größe nicht auf das Byte stimmt. Nach jeder
+Änderung an `www/` also:
+
+```sh
+tools/make_controls.sh
+```
+
+Wird das vergessen, schlägt `test/controls.test.mjs` fehl – dafür ist er da.
+Neue Einträge in `CHANGED` gehören nach oben, vor die erste Leerzeile: FHEM
+zeigt beim Update genau diesen Block an.
 
 `test/fixtures/reference-track-botvac-d6.jsonl` ist die echte, ausgedünnte
 Aufzeichnung aus dem Modul-Repo; `test/fixtures/expected-grid.json` enthält das,
