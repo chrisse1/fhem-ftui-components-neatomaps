@@ -1,0 +1,391 @@
+/*
+* The component in a real FTUI page, in a real browser.
+*
+*     npm run test:browser          (or: node --test test/browser.test.mjs)
+*
+* Needs two things that are not part of this repository:
+*
+*   - a checkout of knowthelist/ftui, in ./.ftui or wherever FTUI_DIR points
+*     (test/get-ftui.sh fetches one)
+*   - Playwright with a Chromium
+*
+* Without them the tests skip rather than fail: the map maths in
+* test/session.test.mjs is what CI can check anywhere.
+*/
+
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { startFakeFhem } from './harness/fake-fhem.mjs';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const repoDir = join(here, '..');
+const ftuiDir = process.env.FTUI_DIR || join(repoDir, '.ftui');
+const shotDir = process.env.SHOT_DIR || '';
+
+const SESSIONS = {
+  // Newest first, as the names sort. The newest one has no summary line: that
+  // is what a run still in progress looks like.
+  'Staubsauger-2026-09-20_11-59-11.jsonl': { summary: null },
+  'Staubsauger-2026-09-19_09-30-00.jsonl': {
+    summary: { points: 549, scans: 50, distance: 137.8, rotation: 20500, seconds: 1500 },
+  },
+  'Staubsauger-2026-09-18_14-05-00.jsonl': {
+    summary: { points: 210, scans: 4, distance: 42.5, rotation: 8100, seconds: 640 },
+    scans: 4,
+  },
+};
+
+let chromium = null;
+try {
+  ({ chromium } = await import('playwright'));
+} catch (err) {
+  try {
+    ({ chromium } = await import('/opt/node22/lib/node_modules/playwright/index.mjs'));
+  } catch (also) {
+    chromium = null;
+  }
+}
+
+const missing = [];
+if (!chromium) { missing.push('playwright'); }
+if (!existsSync(join(ftuiDir, 'www/ftui/ftui.js'))) { missing.push(`FTUI in ${ftuiDir} (run test/get-ftui.sh)`); }
+
+/** Three recordings out of the one reference, so there is something to page. */
+async function makeData() {
+  const dir = await mkdtemp(join(tmpdir(), 'neato-maps-'));
+  const reference = await readFile(join(here, 'fixtures/reference-track-botvac-d6.jsonl'), 'utf8');
+  const lines = reference.split('\n').filter(line => line.trim() && !line.startsWith('#'));
+
+  for (const [name, recipe] of Object.entries(SESSIONS)) {
+    let body = lines;
+    if (recipe.scans) {
+      let scans = 0;
+      body = lines.filter(line => !line.includes('"scan"') || ++scans <= recipe.scans);
+    }
+    const out = body.slice();
+    if (recipe.summary) {
+      out.push(JSON.stringify({ summary: recipe.summary }));
+    }
+    await writeFile(join(dir, name), out.join('\n') + '\n');
+  }
+
+  return dir;
+}
+
+async function open(options = {}) {
+  const dataDir = await makeData();
+  const fhem = await startFakeFhem({
+    ftuiDir,
+    repoDir,
+    dataDir,
+    pageDir: join(here, 'harness'),
+    readings: {
+      state: options.state || 'docked',
+      trackFile: options.trackFile !== undefined
+        ? options.trackFile
+        : './www/neato/Staubsauger-2026-09-20_11-59-11.jsonl',
+    },
+    refusePerl: options.refusePerl,
+  });
+
+  const browser = await chromium.launch();
+  const page = await browser.newPage({ viewport: options.viewport || { width: 1100, height: 900 } });
+  const problems = [];
+  page.on('pageerror', error => problems.push(String(error)));
+  page.on('console', message => {
+    // FTUI looks for an optional config.local.js on every page; a real
+    // installation answers that with a 404 as well.
+    const from = message.location().url || '';
+    if (message.type() === 'error' && !from.includes('config.local.js')) {
+      problems.push(`${message.text()} (${from})`);
+    }
+  });
+
+  await page.goto(`${fhem.url}/fhem/ftui/page/page.html`);
+  await settled(page);
+
+  return {
+    page,
+    fhem,
+    problems,
+    shot: async (name) => {
+      if (shotDir) {
+        await page.screenshot({ path: join(shotDir, name) });
+      }
+    },
+    close: async () => {
+      await browser.close();
+      await fhem.close();
+      await rm(dataDir, { recursive: true, force: true });
+    },
+  };
+}
+
+/**
+ * Waits until every map on the page has something to show - a drawing or a
+ * message. The chevrons of the buttons are SVGs too, hence '.stage svg'.
+ */
+function settled(page) {
+  return page.waitForFunction(() => {
+    const maps = [...document.querySelectorAll('ftui-neato-map')];
+    return maps.length > 0 && maps.every(map => {
+      const root = map.shadowRoot;
+      if (!root) { return false; }
+      const note = root.querySelector('.note').textContent;
+      return !!root.querySelector('.stage svg') || (note.length > 0 && !note.includes('…'));
+    });
+  }, null, { timeout: 15000 });
+}
+
+/** What a map shows, read out of its shadow root. */
+function probe(page, id) {
+  return page.evaluate((elementId) => {
+    const element = document.querySelector('#' + elementId);
+    const root = element.shadowRoot;
+    const svg = root.querySelector('.stage svg');
+    const box = element.getBoundingClientRect();
+    const tile = element.closest('ftui-grid-tile').getBoundingClientRect();
+    const svgBox = svg ? svg.getBoundingClientRect() : null;
+    return {
+      index: element.index,
+      sessions: element.sessions.length,
+      title: root.querySelector('.title').textContent,
+      sub: root.querySelector('.sub').textContent,
+      live: !!root.querySelector('.live'),
+      note: root.querySelector('.note').textContent,
+      walls: svg ? svg.querySelectorAll('g.wall rect').length : 0,
+      free: svg ? svg.querySelectorAll('g.free rect').length : 0,
+      points: svg ? svg.querySelectorAll('g.points rect').length : 0,
+      track: svg ? svg.querySelectorAll('polyline.track').length : 0,
+      viewBox: svg ? svg.getAttribute('viewBox') : '',
+      previousDisabled: root.querySelector('.previous').disabled,
+      nextDisabled: root.querySelector('.next').disabled,
+      box: { width: box.width, height: box.height, top: box.top, left: box.left },
+      tile: { width: tile.width, height: tile.height, top: tile.top, left: tile.left },
+      svgBox: svgBox ? { width: svgBox.width, height: svgBox.height } : null,
+    };
+  }, id);
+}
+
+test('the map fills its grid tile and draws the run', { skip: missing.join(', ') || false }, async () => {
+  const context = await open();
+
+  try {
+    const listed = await probe(context.page, 'map-listed');
+
+    // The tile keeps its header; the map has the rest of it.
+    assert.ok(listed.box.width > listed.tile.width - 8, `${listed.box.width} vs tile ${listed.tile.width}`);
+    assert.ok(listed.box.height > 0.7 * listed.tile.height);
+    assert.ok(listed.box.left >= listed.tile.left - 1);
+    assert.ok(listed.box.top >= listed.tile.top - 1);
+
+    // The drawing fills the width of the component and stays inside it.
+    assert.ok(listed.svgBox.width > listed.box.width - 2);
+    assert.ok(listed.svgBox.height <= listed.box.height + 1);
+
+    assert.ok(listed.walls > 50, `wall rectangles: ${listed.walls}`);
+    assert.ok(listed.free > 50, `free rectangles: ${listed.free}`);
+    // Row runs, not one rectangle per cell: 656 wall cells fit in far fewer.
+    assert.ok(listed.walls < 656, `wall rectangles not merged: ${listed.walls}`);
+    assert.equal(listed.track, 1);
+    assert.equal(listed.note, '');
+
+    await context.shot('tile.png');
+    assert.deepEqual(context.problems, []);
+  } finally {
+    await context.close();
+  }
+});
+
+test('the tile size decides the map size', { skip: missing.join(', ') || false }, async () => {
+  const context = await open();
+
+  try {
+    const before = await probe(context.page, 'map-listed');
+
+    // A tile of another size, laid out by FTUI itself.
+    await context.page.evaluate(() => {
+      const tile = document.querySelector('#listed');
+      tile.setAttribute('width', '2');
+      tile.setAttribute('height', '5');
+      document.querySelector('ftui-grid').configureGrid();
+    });
+    await context.page.waitForTimeout(300);
+    const after = await probe(context.page, 'map-listed');
+
+    assert.notEqual(before.tile.width, after.tile.width, 'the tile did not change');
+    assert.ok(after.box.width > after.tile.width - 8, `${after.box.width} in a tile of ${after.tile.width}`);
+    assert.ok(after.box.height > 0.7 * after.tile.height);
+    assert.ok(after.svgBox.width > after.box.width - 2);
+    assert.ok(after.svgBox.height <= after.box.height + 1);
+    // Same map, same extent - only the box around it changed.
+    assert.equal(before.viewBox, after.viewBox);
+    await context.shot('resized.png');
+  } finally {
+    await context.close();
+  }
+});
+
+test('the recordings can be paged through', { skip: missing.join(', ') || false }, async () => {
+  const context = await open();
+  const { page } = context;
+
+  try {
+    const click = async (which) => {
+      await page.evaluate((selector) => document.querySelector('#map-listed')
+        .shadowRoot.querySelector(selector).click(), which);
+      await settled(page);
+      await page.waitForTimeout(200);
+      return probe(page, 'map-listed');
+    };
+
+    let map = await probe(page, 'map-listed');
+    assert.equal(map.sessions, 3);
+    assert.equal(map.index, 0);
+    assert.equal(map.previousDisabled, true);
+    assert.ok(map.sub.includes('1/3'), map.sub);
+    assert.equal(map.live, true, 'the newest recording has no summary: still running');
+
+    const first = map.viewBox;
+    map = await click('.next');
+    assert.equal(map.index, 1);
+    assert.ok(map.sub.includes('2/3'), map.sub);
+    assert.ok(map.sub.includes('137,8') || map.sub.includes('137.8'), map.sub);
+    assert.equal(map.live, false, 'a finished recording has its summary');
+    assert.equal(map.previousDisabled, false);
+
+    map = await click('.next');
+    assert.equal(map.index, 2);
+    assert.equal(map.nextDisabled, true);
+    assert.ok(map.sub.includes('42,5') || map.sub.includes('42.5'), map.sub);
+    // Four scans instead of ten is a smaller map.
+    assert.notEqual(map.viewBox, first);
+    await context.shot('paged.png');
+
+    map = await click('.previous');
+    assert.equal(map.index, 1);
+
+    // Keys and a swipe do the same as the buttons.
+    await page.evaluate(() => document.querySelector('#map-listed')
+      .shadowRoot.querySelector('.stage').focus());
+    await page.keyboard.press('ArrowLeft');
+    await page.waitForTimeout(400);
+    assert.equal((await probe(page, 'map-listed')).index, 0);
+
+    const stage = await page.evaluateHandle(() => document.querySelector('#map-listed')
+      .shadowRoot.querySelector('.stage'));
+    const area = await stage.boundingBox();
+    await page.mouse.move(area.x + area.width * 0.75, area.y + area.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(area.x + area.width * 0.25, area.y + area.height / 2, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+    assert.equal((await probe(page, 'map-listed')).index, 1, 'swiping left shows the older run');
+
+    assert.deepEqual(context.problems, []);
+  } finally {
+    await context.close();
+  }
+});
+
+test('the sessions of a device come from FHEM', { skip: missing.join(', ') || false }, async () => {
+  const context = await open();
+
+  try {
+    const bound = await probe(context.page, 'map-bound');
+    assert.equal(bound.sessions, 3);
+    assert.ok(bound.walls > 50);
+
+    const perl = context.fhem.state.commands.find(command => command.startsWith('{'));
+    assert.ok(perl, 'no listing command was sent');
+    assert.ok(!perl.includes(';'), 'a semicolon would cut the command in half: ' + perl);
+    assert.ok(perl.includes('Staubsauger-*.jsonl'), perl);
+    assert.ok(perl.includes('./www/neato/'), perl);
+  } finally {
+    await context.close();
+  }
+});
+
+test('a refused Perl command still shows the running session', { skip: missing.join(', ') || false }, async () => {
+  const context = await open({ refusePerl: true, state: 'cleaning' });
+
+  try {
+    await context.page.waitForFunction(() => !!document.querySelector('#map-bound')
+      ?.shadowRoot?.querySelector('.stage svg'), null, { timeout: 15000 });
+    const bound = await probe(context.page, 'map-bound');
+
+    // Only the file the reading names, but a map all the same.
+    assert.equal(bound.sessions, 1);
+    assert.ok(bound.walls > 50);
+    assert.equal(bound.note, '');
+    assert.equal(bound.nextDisabled, true);
+  } finally {
+    await context.close();
+  }
+});
+
+test('a device without recordings says so instead of staying empty',
+  { skip: missing.join(', ') || false }, async () => {
+    const context = await open({ refusePerl: true, trackFile: '' });
+
+    try {
+      await context.page.waitForFunction(() => {
+        const note = document.querySelector('#map-bound')?.shadowRoot?.querySelector('.note');
+        return note && note.textContent.length > 0 && !note.textContent.includes('…');
+      }, null, { timeout: 15000 });
+
+      const bound = await probe(context.page, 'map-bound');
+      assert.equal(bound.sessions, 0);
+      assert.ok(bound.note.length > 0, 'no message');
+      assert.equal(bound.walls, 0);
+    } finally {
+      await context.close();
+    }
+  });
+
+test('the raw endpoints can be drawn instead of the grid',
+  { skip: missing.join(', ') || false }, async () => {
+    const context = await open();
+
+    try {
+      const points = await probe(context.page, 'map-points');
+      assert.ok(points.points > 1000, `points drawn: ${points.points}`);
+      assert.equal(points.walls, 0);
+      assert.equal(points.free, 0);
+      assert.equal(points.track, 1);
+      // show-info="false" hides the line, the map keeps the whole tile.
+      assert.ok(points.box.height > 0.8 * points.tile.height);
+      await context.shot('points.png');
+    } finally {
+      await context.close();
+    }
+  });
+
+test('the running session is re-read while the robot cleans',
+  { skip: missing.join(', ') || false }, async () => {
+    const context = await open({ state: 'cleaning' });
+
+    try {
+      await context.page.waitForFunction(() => !!document.querySelector('#map-bound')
+        ?.shadowRoot?.querySelector('.stage svg'), null, { timeout: 15000 });
+
+      // The interval is in seconds; a test does not wait half a minute for it.
+      await context.page.evaluate(() => {
+        document.querySelector('#map-bound').setAttribute('refresh-interval', '1');
+      });
+      const before = context.fhem.state.requests.filter(url => url.includes('nocache')).length;
+      await context.page.waitForTimeout(2500);
+      const after = context.fhem.state.requests.filter(url => url.includes('nocache')).length;
+
+      assert.ok(after > before, `no reload: ${before} -> ${after}`);
+      assert.ok((await probe(context.page, 'map-bound')).live, 'no sign that it is running');
+    } finally {
+      await context.close();
+    }
+  });

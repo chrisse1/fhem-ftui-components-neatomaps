@@ -1,0 +1,147 @@
+/*
+* A FHEMWEB stand-in, just large enough for the component.
+*
+* It answers the three things <ftui-neato-map> asks a FHEM installation for:
+*
+*   GET /fhem?XHR=1                 the CSRF token FTUI fetches first
+*   GET /fhem?cmd=jsonlist2 ...     the readings behind the bindings
+*   GET /fhem?cmd={ ... jsonl ...}  the list of recorded sessions
+*   GET /fhem/neato/<name>.jsonl    a recording, as FHEMWEB serves www/neato
+*
+* The FTUI framework itself is served from a checkout (FTUI_DIR), with this
+* repository's components/neato/ laid over it - which is exactly how the
+* component ends up on a real installation.
+*/
+
+import { createServer } from 'node:http';
+import { createReadStream } from 'node:fs';
+import { stat } from 'node:fs/promises';
+import { join, extname, normalize } from 'node:path';
+
+const TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.mjs': 'application/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.jsonl': 'text/plain; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+};
+
+/**
+ * @param {object} options
+ * @param {string} options.ftuiDir   a checkout of knowthelist/ftui
+ * @param {string} options.repoDir   this repository
+ * @param {string} options.dataDir   the session files, as www/neato
+ * @param {string} options.pageDir   where the test page lives
+ * @param {object} options.readings  { state, trackFile } of the device
+ * @param {boolean} options.refusePerl  answer the listing command with a refusal
+ */
+export async function startFakeFhem(options) {
+  const state = {
+    readings: Object.assign({ state: 'docked', trackFile: '' }, options.readings),
+    refusePerl: Boolean(options.refusePerl),
+    commands: [],
+    requests: [],
+  };
+
+  const serveFile = async (response, path) => {
+    try {
+      const info = await stat(path);
+      if (!info.isFile()) {
+        throw new Error('not a file');
+      }
+      response.writeHead(200, {
+        'Content-Type': TYPES[extname(path)] || 'application/octet-stream',
+        'Cache-Control': 'no-cache',
+      });
+      createReadStream(path).pipe(response);
+    } catch (err) {
+      response.writeHead(404, { 'Content-Type': 'text/plain' });
+      response.end('not found: ' + path);
+    }
+  };
+
+  const send = (response, body, type = 'text/plain; charset=utf-8') => {
+    response.writeHead(200, { 'Content-Type': type, 'X-FHEM-csrfToken': 'csrf_fake' });
+    response.end(body);
+  };
+
+  const server = createServer(async (request, response) => {
+    const url = new URL(request.url, 'http://localhost');
+    const path = normalize(decodeURIComponent(url.pathname));
+    state.requests.push(request.url);
+
+    // The command channel
+    if (path === '/fhem' || path === '/fhem/') {
+      const command = url.searchParams.get('cmd') || '';
+      state.commands.push(command);
+
+      if (!command) {
+        return send(response, '');                       // CSRF handshake
+      }
+      if (command.startsWith('jsonlist2')) {
+        return send(response, JSON.stringify({
+          Arg: command,
+          Results: [{
+            Name: 'Staubsauger',
+            Internals: { NAME: 'Staubsauger', TYPE: 'NeatoLocal' },
+            Attributes: {},
+            Readings: {
+              state: { Value: state.readings.state, Time: '2026-09-20 12:00:00' },
+              trackFile: { Value: state.readings.trackFile, Time: '2026-09-20 11:59:11' },
+            },
+          }],
+          totalResultsReturned: 1,
+        }), 'application/json; charset=utf-8');
+      }
+      if (command.startsWith('{')) {
+        if (state.refusePerl) {
+          return send(response, 'Forbidden: Perl commands are not allowed');
+        }
+        const names = await listSessions(options.dataDir);
+        return send(response, names.join('\n'));
+      }
+      return send(response, '');
+    }
+
+    // The recordings, where FHEMWEB serves www/neato
+    if (path.startsWith('/fhem/neato/')) {
+      return serveFile(response, join(options.dataDir, path.slice('/fhem/neato/'.length)));
+    }
+
+    // This repository's component, laid over the framework
+    if (path.startsWith('/fhem/ftui/components/neato/')) {
+      return serveFile(response, join(options.repoDir, 'www/ftui/components/neato',
+        path.slice('/fhem/ftui/components/neato/'.length)));
+    }
+
+    if (path.startsWith('/fhem/ftui/page/')) {
+      return serveFile(response, join(options.pageDir, path.slice('/fhem/ftui/page/'.length)));
+    }
+
+    if (path.startsWith('/fhem/ftui/')) {
+      return serveFile(response, join(options.ftuiDir, 'www/ftui', path.slice('/fhem/ftui/'.length)));
+    }
+
+    response.writeHead(404, { 'Content-Type': 'text/plain' });
+    response.end('not found');
+  });
+
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+
+  return {
+    state,
+    url: `http://127.0.0.1:${port}`,
+    close: () => new Promise(resolve => server.close(resolve)),
+  };
+}
+
+async function listSessions(dir) {
+  const { readdir } = await import('node:fs/promises');
+  const names = await readdir(dir);
+  return names.filter(name => name.endsWith('.jsonl')).sort().reverse();
+}

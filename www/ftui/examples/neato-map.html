@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+  <!--
+    Beispielseite für <ftui-neato-map>.
+
+    Nach www/ftui/examples/ des FTUI-Verzeichnisses kopieren und im Browser
+    öffnen: <FHEM>/fhem/ftui/examples/neato-map.html
+    "Staubsauger" überall durch den Namen des eigenen NeatoLocal-Geräts
+    ersetzen.
+    -->
+  <base href="../" />
+  <script src="ftui.js"></script>
+  <link href="ftui.css" rel="stylesheet">
+  <link href="themes/ftui-theme.css" rel="stylesheet">
+  <link href="favicon.ico" rel="icon" type="image/x-icon" />
+
+  <meta name="viewport" content="width=device-width">
+  <meta name="debug" content="0">
+
+  <title>Neato – Reinigungskarten</title>
+</head>
+
+<body>
+  <ftui-grid margin="8" shape="round">
+
+    <!-- Der Normalfall: das Gerät nennen, die beiden Readings binden.
+         Die Karte füllt die Kachel, die Läufe sind durchblätterbar. -->
+    <ftui-grid-tile row="1" col="1" width="6" height="5">
+      <ftui-grid-header>Staubsauger</ftui-grid-header>
+      <ftui-neato-map device="Staubsauger"
+                      [track-file]="Staubsauger:trackFile"
+                      [state]="Staubsauger:state"></ftui-neato-map>
+    </ftui-grid-tile>
+
+    <!-- Nur der letzte Lauf, ohne Blättern und ohne Zeile darunter. -->
+    <ftui-grid-tile row="1" col="7" width="3" height="3">
+      <ftui-grid-header>Zuletzt</ftui-grid-header>
+      <ftui-neato-map device="Staubsauger"
+                      [track-file]="Staubsauger:trackFile"
+                      [state]="Staubsauger:state"
+                      limit="1" show-info="false" show-controls="false"></ftui-neato-map>
+    </ftui-grid-tile>
+
+    <!-- Die rohen Endpunkte statt des Belegungsgitters, in eigenen Farben. -->
+    <ftui-grid-tile row="4" col="7" width="3" height="2">
+      <ftui-grid-header>Punkte</ftui-grid-header>
+      <ftui-neato-map device="Staubsauger"
+                      [track-file]="Staubsauger:trackFile"
+                      show-points show-track="false"
+                      style="--neato-map-point-color: #9ec9f0"></ftui-neato-map>
+    </ftui-grid-tile>
+
+  </ftui-grid>
+</body>
+
+</html>

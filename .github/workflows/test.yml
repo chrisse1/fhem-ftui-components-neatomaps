@@ -1,0 +1,30 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  maths:
+    # The map maths against the numbers of the Python reference - no browser,
+    # no FTUI, no network.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test test/session.test.mjs
+
+  browser:
+    # The component in a real FTUI page: tile size, paging, the list from FHEM.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+      - run: test/get-ftui.sh
+      - run: node --test test/browser.test.mjs

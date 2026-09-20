@@ -1,0 +1,44 @@
+{
+  "bounds": {
+    "maxX": 10.291499367655026,
+    "maxY": 5.235645308407779,
+    "minX": 0.4118123789396977,
+    "minY": -3.110667297946295
+  },
+  "cell": 0.05,
+  "device": "Staubsauger",
+  "firstPoints": [
+    [
+      2.470362413,
+      2.380463266
+    ],
+    [
+      2.474729255,
+      2.31962492
+    ],
+    [
+      2.496076375,
+      2.257230421
+    ],
+    [
+      2.460850618,
+      2.201481707
+    ],
+    [
+      0.725297282,
+      2.284491688
+    ]
+  ],
+  "free": 5644,
+  "freeSha1": "17125ac5851680852eeefda130bac004dd72b0d6",
+  "observed": 8299,
+  "points": 2841,
+  "poses": 69,
+  "reference": "tools/track_map.py of chrisse1/neato-FHEM",
+  "scans": 10,
+  "seen": 2,
+  "source": "reference-track-botvac-d6.jsonl",
+  "threshold": 0.25,
+  "walls": 656,
+  "wallsSha1": "e52ba6cd70183b1290757df58b25df753f851932"
+}

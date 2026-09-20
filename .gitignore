@@ -1,0 +1,6 @@
+# The FTUI checkout the browser test runs against (test/get-ftui.sh)
+.ftui
+.ftui/
+node_modules/
+package-lock.json
+shots/
