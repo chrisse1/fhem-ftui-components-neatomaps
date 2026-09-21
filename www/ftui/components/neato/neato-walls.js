@@ -63,6 +63,23 @@ const DEFAULTS = {
   // a line laid straight through a slightly crooked wall leaves its cells
   // here and there, and turning it onto the main direction moves it again.
   support: 0.35,
+  // Below this length a piece has to run along the flat to be drawn at all.
+  // A flat is built square; a short piece at some angle of its own is a chair
+  // leg, a pot plant, a door standing open - true, but not a wall, and it is
+  // what makes a map look like a scribble. 0 keeps everything.
+  squareBelow: 1.2,
+  // A piece this close to a much longer parallel one is the same wall seen
+  // again, or its skirting board, or the cupboard in front of it. The longer
+  // one is drawn, this one is not.
+  shadow: 0.35,
+  // How much longer the other one has to be for that.
+  shadowFactor: 2.5,
+  // How far across its direction a wall's sightings may scatter and still be
+  // gathered into one line. An hour of driving puts the same wall down a
+  // hand's width apart; two walls that far apart are rare, and where the
+  // sightings really do form two heaps, two lines come out - the gathering
+  // follows where they are dense, it does not average everything in reach.
+  flight: 0.12,
   // At most this many revolutions are taken apart into lines. A long run has
   // three hundred of them and sees every wall a dozen times over; the
   // geometry does not get better from the rest, only slower. Which cells are
@@ -92,16 +109,262 @@ export function wallLines(scans, grid, cells, options = {}) {
     pieces = join(worthwhile(gather(turned, settings), settings), settings);
   }
 
-  const walls = [];
-  for (const piece of pieces) {
-    const segment = supported(piece, grid, cells, settings);
-    if (segment && segment.length >= settings.minLength) {
-      walls.push(segment);
+  // Gathering and tidying move lines around, so the grid has the last word,
+  // not the first: what is drawn in the end is what the grid backs in the
+  // end.
+  let walls = tidy(flights(pieces, settings), direction, settings);
+
+  walls = walls
+    .map(wall => supported(wall, grid, cells, settings))
+    .filter(wall => wall && wall.length >= settings.minLength)
+    .sort((a, b) => b.length - a.length);
+
+  return { walls, direction };
+}
+
+/**
+ * Gathers the sightings of one wall into one line.
+ *
+ * After the pieces have been turned onto the flat's direction, a wall is a
+ * row of parallel lines a few centimetres apart: the same wall, seen from
+ * another place an hour later. Joining them in pairs does not help - they are
+ * all about equally long, so none of them is the one that swallows the
+ * others.
+ *
+ * So they are treated as what they are: a heap. Every line is pulled towards
+ * the weighted middle of the lines near it, again and again, until it stops
+ * moving (mean shift, weighted by length so a long wall pulls harder than a
+ * short shelf). Lines that end up in the same place were the same wall.
+ * Where the sightings really form two heaps - a wall and a cupboard a good
+ * step in front of it - the two survive as two.
+ */
+function flights(walls, settings) {
+  if (!(settings.flight > 0) || walls.length < 2) {
+    return walls;
+  }
+
+  const groups = new Map();
+  // Lines within the joining tolerance of each other count as parallel. A
+  // tenth of a degree would give every line a heap of its own, and nothing
+  // would ever be gathered.
+  const step = Math.max(settings.joinDegrees, 1) * Math.PI / 180;
+
+  for (const wall of walls) {
+    const angle = ((wall.angle % Math.PI) + Math.PI) % Math.PI;
+    const key = Math.round(angle / step);
+    const ux = Math.cos(angle);
+    const uy = Math.sin(angle);
+    const mx = (wall.x0 + wall.x1) / 2;
+    const my = (wall.y0 + wall.y1) / 2;
+    const entry = { wall, angle, ux, uy, offset: -uy * mx + ux * my };
+
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key).push(entry);
+  }
+
+  const out = [];
+  for (const group of groups.values()) {
+    if (group.length === 1) {
+      out.push(group[0].wall);
+      continue;
+    }
+    out.push(...gatherFlight(group, settings));
+  }
+
+  return out;
+}
+
+/** One direction: which lines sit at the same distance, and what comes of it. */
+function gatherFlight(group, settings) {
+  const window = settings.flight;
+
+  // One direction for the whole heap, weighted by length, and every offset
+  // measured against it - otherwise lines a degree apart never land on the
+  // same distance and the heap falls apart again.
+  let sumX = 0;
+  let sumY = 0;
+  for (const entry of group) {
+    sumX += Math.cos(2 * entry.angle) * entry.wall.length;
+    sumY += Math.sin(2 * entry.angle) * entry.wall.length;
+  }
+  const angle = 0.5 * Math.atan2(sumY, sumX);
+  const ux = Math.cos(angle);
+  const uy = Math.sin(angle);
+  for (const entry of group) {
+    const mx = (entry.wall.x0 + entry.wall.x1) / 2;
+    const my = (entry.wall.y0 + entry.wall.y1) / 2;
+    entry.angle = angle;
+    entry.ux = ux;
+    entry.uy = uy;
+    entry.offset = -uy * mx + ux * my;
+  }
+
+  // Mean shift, a handful of rounds - the heaps of a flat are far enough
+  // apart that it settles quickly.
+  const at = group.map(entry => entry.offset);
+  for (let round = 0; round < 12; round++) {
+    let moved = 0;
+    for (let i = 0; i < at.length; i++) {
+      let sum = 0;
+      let weight = 0;
+      for (let k = 0; k < group.length; k++) {
+        const distance = Math.abs(group[k].offset - at[i]);
+        if (distance > window) {
+          continue;
+        }
+        // Nearer sightings count more, and a long wall more than a short one.
+        const w = group[k].wall.length * (1 - distance / window);
+        sum += group[k].offset * w;
+        weight += w;
+      }
+      if (weight > 0) {
+        const next = sum / weight;
+        moved = Math.max(moved, Math.abs(next - at[i]));
+        at[i] = next;
+      }
+    }
+    if (moved < 0.002) {
+      break;
     }
   }
 
-  walls.sort((a, b) => b.length - a.length);
-  return { walls, direction };
+  // Lines that settled within a centimetre of each other are one wall.
+  const order = at.map((offset, i) => i).sort((a, b) => at[a] - at[b]);
+  const heaps = [];
+  for (const i of order) {
+    const last = heaps[heaps.length - 1];
+    if (last && at[i] - at[last[last.length - 1]] < 0.01) {
+      last.push(i);
+    } else {
+      heaps.push([i]);
+    }
+  }
+
+  const out = [];
+  for (const heap of heaps) {
+    if (heap.length === 1) {
+      out.push(group[heap[0]].wall);
+      continue;
+    }
+    out.push(...mergeFlight(heap.map(i => group[i]), at[heap[0]], settings));
+  }
+
+  return out;
+}
+
+/** The lines of one wall, laid onto their common line and cut at real gaps. */
+function mergeFlight(entries, offset, settings) {
+  const { ux, uy } = entries[0];
+  // The wall sits where its sightings agree; along it, it reaches as far as
+  // they reach - and no further.
+  const spans = entries.map(entry => {
+    const t0 = entry.wall.x0 * ux + entry.wall.y0 * uy;
+    const t1 = entry.wall.x1 * ux + entry.wall.y1 * uy;
+    return { from: Math.min(t0, t1), to: Math.max(t0, t1), length: entry.wall.length };
+  }).sort((a, b) => a.from - b.from);
+
+  const out = [];
+  let from = spans[0].from;
+  let to = spans[0].to;
+
+  const flush = () => {
+    const length = to - from;
+    if (length <= 0) {
+      return;
+    }
+    out.push({
+      x0: from * ux - offset * uy,
+      y0: from * uy + offset * ux,
+      x1: to * ux - offset * uy,
+      y1: to * uy + offset * ux,
+      angle: Math.atan2(uy, ux),
+      length,
+    });
+  };
+
+  for (const span of spans.slice(1)) {
+    if (span.from - to > settings.gap) {
+      flush();
+      from = span.from;
+      to = span.to;
+    } else {
+      to = Math.max(to, span.to);
+    }
+  }
+  flush();
+
+  return out;
+}
+
+/**
+ * Takes out what makes a flat look like a scribble.
+ *
+ * Two rules, both from what a flat is: it is built square, and a wall is one
+ * wall however often it was seen.
+ *
+ *   - A short piece that runs neither along the flat nor across it is not a
+ *     wall. It is furniture, a door left open, a pot plant. Longer pieces are
+ *     kept whatever their angle - a slanted wall exists, a slanted chair leg
+ *     of two metres does not.
+ *   - A piece lying close to and parallel with a much longer one is that same
+ *     wall again: seen from another spot an hour later, or its skirting
+ *     board, or the cupboard standing against it. The longer one is the wall.
+ */
+function tidy(walls, direction, settings) {
+  const square = [];
+
+  for (const wall of walls) {
+    if (settings.squareBelow > 0 && wall.length < settings.squareBelow) {
+      let off = ((wall.angle - direction) % Math.PI + Math.PI) % Math.PI;
+      off = Math.min(off, Math.PI - off, Math.abs(off - Math.PI / 2));
+      if (off > (settings.snapDegrees || 8) * Math.PI / 180) {
+        continue;
+      }
+    }
+    square.push(wall);
+  }
+
+  // Longest first, so the wall is always found before its echoes.
+  square.sort((a, b) => b.length - a.length);
+  const kept = [];
+
+  for (const wall of square) {
+    const shadowed = kept.some(other => {
+      if (other.length < wall.length * settings.shadowFactor) {
+        return false;
+      }
+      let delta = Math.abs(other.angle - wall.angle) % Math.PI;
+      delta = Math.min(delta, Math.PI - delta);
+      if (delta > (settings.joinDegrees || 4) * Math.PI / 180) {
+        return false;
+      }
+
+      // Across the longer one: how far away does the short one lie?
+      const ux = Math.cos(other.angle);
+      const uy = Math.sin(other.angle);
+      const mx = (other.x0 + other.x1) / 2;
+      const my = (other.y0 + other.y1) / 2;
+      const across = (x, y) => Math.abs(-(y - my) * ux + (x - mx) * uy);
+      if (Math.max(across(wall.x0, wall.y0), across(wall.x1, wall.y1)) > settings.shadow) {
+        return false;
+      }
+
+      // And does it lie beside it at all, or somewhere else entirely?
+      const along = (x, y) => (x - mx) * ux + (y - my) * uy;
+      const half = other.length / 2;
+      const a0 = along(wall.x0, wall.y0);
+      const a1 = along(wall.x1, wall.y1);
+      return Math.min(a0, a1) < half && Math.max(a0, a1) > -half;
+    });
+
+    if (!shadowed) {
+      kept.push(wall);
+    }
+  }
+
+  return kept;
 }
 
 /** Every nth revolution, evenly spread over the run. */

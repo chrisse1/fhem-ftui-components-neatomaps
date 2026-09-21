@@ -23,6 +23,7 @@ import { FtuiElement } from '../element.component.js';
 import { isNumeric } from '../../modules/ftui/ftui.helper.js';
 import * as track from './neato-track.js';
 import { wallLines, wallTest } from './neato-walls.js';
+import { alignScans } from './neato-align.js';
 
 /*
 * Attributes that are nothing but a CSS custom property on the element.
@@ -149,6 +150,9 @@ export class FtuiNeatoMap extends FtuiElement {
       // 'lines' draws the walls as the straight pieces they are, 'cells' as
       // the grid cells the evidence marks.
       walls: 'lines',
+      // Lay the revolutions on top of each other before drawing. Costs a
+      // moment on a long run and is what makes a wall one line.
+      align: true,
       lineTolerance: 0.04,
       joinGap: 0.8,
       joinOffset: 0.12,
@@ -262,6 +266,7 @@ export class FtuiNeatoMap extends FtuiElement {
       case 'threshold':
       case 'min-seen':
       case 'walls':
+      case 'align':
       case 'line-tolerance':
       case 'join-gap':
       case 'join-offset':
@@ -794,11 +799,20 @@ export class FtuiNeatoMap extends FtuiElement {
     const threshold = Number(this.threshold);
     const seen = Number(this.minSeen);
 
-    this.view.grid = track.occupancy(this.session.scans, cell, this.view.points);
+    // The poses the robot reports are good to a few centimetres, and over an
+    // hour those centimetres smear every wall into a band. Laying the
+    // revolutions onto each other first is what makes a wall one line - see
+    // neato-align.js. The track is not touched by it.
+    const scans = this.align && this.session.scans.length > 2
+      ? alignScans(this.session.scans).scans
+      : this.session.scans;
+
+    const points = scans === this.session.scans ? this.view.points : track.allPoints(scans);
+    this.view.grid = track.occupancy(scans, cell, points);
     this.view.cells = track.classify(this.view.grid, threshold, seen);
 
     if (this.walls === 'lines') {
-      const { walls, direction } = wallLines(this.session.scans, this.view.grid,
+      const { walls, direction } = wallLines(scans, this.view.grid,
         wallTest(this.view.grid, threshold, seen), {
           tolerance: Number(this.lineTolerance),
           gap: Number(this.joinGap),

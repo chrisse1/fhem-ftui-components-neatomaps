@@ -104,6 +104,7 @@ Solange `state` auf `cleaning` steht, wird die laufende Aufzeichnung alle
 | `list-command` | – | Eigenes FHEM-Kommando für die Liste, falls das eingebaute nicht passt. |
 | `refresh-interval` | `30` | Sekunden zwischen zwei Leseversuchen während eines Laufs, `0` schaltet das ab. |
 | `walls` | `lines` | Wie die Wände gezeichnet werden: `lines` zieht gerade Linien daraus, `cells` zeigt die Gitterzellen der rohen Evidenz. |
+| `align` | an | Die Umdrehungen vor dem Zeichnen aufeinanderlegen. Kostet bei einem Stundenlauf rund 0,4 s und ist der Grund, warum eine Wand eine Linie ist. |
 | `line-tolerance` | `0.04` | Wie weit ein Messpunkt von seiner Linie abweichen darf, in Metern. Größer heißt glatter und ungenauer. |
 | `join-gap` | `0.8` | Bis zu welcher Lücke zwei Stücke derselben Flucht zu einer Wand verbunden werden. `0` verbindet nichts. |
 | `join-offset` | `0.12` | Wie weit zwei Stücke quer zur Richtung auseinanderliegen dürfen, um als dieselbe Wand zu gelten. Zu streng lässt eine Wand als Bündel paralleler Striche stehen, zu großzügig macht aus zwei Wänden eine. |
@@ -197,6 +198,30 @@ Zwei Auswege:
 * `list-command="get myList sessions"` – ein eigenes Kommando, dessen Ausgabe
   Dateinamen sind, durch Zeilenumbruch oder Komma getrennt.
 
+## Warum eine Wand eine Linie ist
+
+Der Roboter weiß auf ein paar Zentimeter genau, wo er steht. Über eine Stunde
+Fahrt machen diese Zentimeter aus einer Wand ein Bündel paralleler Striche:
+Dieselbe Wand, um zehn nach zehn und noch einmal um halb zwölf gesehen,
+landet nicht an derselben Stelle. Dagegen hilft keine Art zu zeichnen – die
+Striche liegen wirklich woanders.
+
+Also werden sie verschoben. Jede Umdrehung wird ein wenig gerückt – ein paar
+Zentimeter, ein, zwei Grad –, bis ihre Punkte möglichst gut auf die Karte
+passen, die alle anderen zeichnen; und das ein paar Mal. Es ist die grobe
+Verwandte dessen, was der Roboter intern mit weit mehr Umdrehungen tut, als
+er aufschreibt.
+
+An einem echten Stundenlauf über eine ganze Wohnung gemessen (595
+Umdrehungen, 156 000 Punkte): Die Scans stimmen danach **40 % besser**
+überein (0,039 → 0,024 Zellen je Punkt, das Maß aus `tools/track_map.py`),
+und aus 156 Wandsegmenten werden 68 – eine Linie je Wand statt eines
+Bündels. Es kostet rund 0,4 s, einmal beim Laden.
+
+**Die gefahrene Spur bleibt unangetastet.** Die Posen sind das, was der
+Roboter gefahren ist; gerückt werden nur die Scans, und nur für die Karte.
+Wer das nicht will: `align="false"`.
+
 ## Warum die Karte ruhiger ist als die Messung
 
 Eine Wohnung besteht aus geraden Wänden, meist rechtwinklig zueinander. Ein
@@ -282,6 +307,7 @@ Die Rechnung lässt sich ohne Roboter, ohne FHEM und ohne Browser prüfen:
 
 ```sh
 node --test test/session.test.mjs      # nur die Karten-Mathematik
+node --test test/align.test.mjs        # das Aufeinanderlegen der Umdrehungen
 node --test test/walls.test.mjs        # die Vereinfachung der Wände
 node --test test/controls.test.mjs     # der Index für FHEMs update
 ```

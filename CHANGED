@@ -2,6 +2,14 @@
 # Leerzeile an - neue Eintraege gehoeren also nach oben, und zwischen den
 # Bloecken steht genau eine Leerzeile. Eine Leerzeile direkt hier waere das
 # Ende der Anzeige, bevor sie angefangen hat.
+2026-09-21 ftui-neato-map 1.2.0
+ - die Umdrehungen werden vor dem Zeichnen aufeinandergelegt: jede wird ein
+   paar Zentimeter gerueckt, bis ihre Punkte auf die Karte der uebrigen
+   passen. An einem Stundenlauf gemessen stimmen die Scans danach 40 Prozent
+   besser ueberein, und aus 156 Wandsegmenten werden 68 - eine Linie je Wand
+   statt eines Buendels. align="false" schaltet es ab
+ - die gefahrene Spur bleibt davon unberuehrt
+
 2026-09-21 ftui-neato-map 1.1.1
  - an einer echten Aufzeichnung ueber eine ganze Wohnung nachgemessen (595
    Umdrehungen, eine Stunde): das Verbinden der Wandstuecke war viel

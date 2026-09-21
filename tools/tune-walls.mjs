@@ -23,6 +23,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 
 import { parseSession, occupancy, classify, allPoints } from '../www/ftui/components/neato/neato-track.js';
 import { wallLines, wallTest } from '../www/ftui/components/neato/neato-walls.js';
+import { alignScans, agreement } from '../www/ftui/components/neato/neato-align.js';
 
 const [, , path, out] = process.argv;
 
@@ -32,17 +33,25 @@ if (!path) {
 }
 
 const session = parseSession(readFileSync(path, 'utf8'));
-const { poses, scans } = session;
+const { poses } = session;
+const recorded = session.scans;
 
-if (!scans.length) {
+if (!recorded.length) {
   process.stderr.write(`${path} has no scans - nothing to simplify.\n`
     + 'Lidar scans need "attr <device> mapInterval <seconds>".\n');
   process.exit(1);
 }
 
+// Wie die Komponente: erst die Umdrehungen aufeinanderlegen, dann zeichnen.
+const before = agreement(recorded);
+const aligned = performance.now();
+const scans = alignScans(recorded).scans;
+const alignMs = performance.now() - aligned;
 const points = allPoints(scans);
 process.stdout.write(`${path}\n${scans.length} Scans, ${points.length / 2} Punkte, `
-  + `${poses.length} Posen${session.summary ? '' : ', noch ohne Abschlusszeile (laeuft?)'}\n\n`);
+  + `${poses.length} Posen${session.summary ? '' : ', noch ohne Abschlusszeile (laeuft?)'}\n`);
+process.stdout.write(`Ausrichten: Schaerfe ${before.toFixed(4)} -> ${agreement(scans).toFixed(4)} `
+  + `in ${alignMs.toFixed(0)} ms (kleiner ist schaerfer)\n\n`);
 
 /** How much of the grid's wall cells the lines cover, in percent. */
 function coverage(walls, grid, cells, slack) {
@@ -87,6 +96,7 @@ const runs = [
   { name: 'min-wall 0.60', options: { minLength: 0.60 } },
   { name: 'ohne Einrasten', options: { snapDegrees: 0 } },
   { name: 'alle Scans', options: { maxScans: 0 } },
+  { name: 'ohne Ausrichten', scans: recorded, options: {} },
 ];
 
 process.stdout.write('                    Segmente   Abdeckung    Laenge     Zeit\n');
@@ -94,10 +104,11 @@ process.stdout.write('                    Segmente   Abdeckung    Laenge     Zei
 let reference = null;
 for (const run of runs) {
   const cell = run.cell || 0.10;
+  const use = run.scans || scans;
   const started = performance.now();
-  const grid = occupancy(scans, cell);
+  const grid = occupancy(use, cell);
   const cells = classify(grid, 0.25, 2);
-  const { walls, direction } = wallLines(scans, grid, wallTest(grid, 0.25, 2), run.options);
+  const { walls, direction } = wallLines(use, grid, wallTest(grid, 0.25, 2), run.options);
   const took = performance.now() - started;
 
   const exact = coverage(walls, grid, cells, 0);
