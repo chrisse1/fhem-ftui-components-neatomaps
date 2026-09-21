@@ -122,8 +122,21 @@ Dann über alle Aufzeichnungen:
    (1,2°/0,15 m, dann 0,3°/0,05 m, dann 0,1°/0,02 m), jeweils ±3 Schritte.
 6. **Ablehnen, was nicht passt.** Güte unter 0,45 heißt: gehört nicht dazu.
    Eine andere Etage in denselben Rahmen zu zwingen zieht Wände quer durch
-   Räume. Gemessen: echte Läufe derselben Wohnung kommen auf 0,63 bis 1,0, ein
-   fremder Korridor bleibt unter 0,3.
+   Räume.
+
+   Zur Schwelle gibt es widersprüchliche Messungen, und beide stehen hier, weil
+   die Sache noch nicht entschieden ist. Auf dieser Seite kamen drei echte
+   Läufe derselben Wohnung auf 0,64, 0,68 und 1,0, ein fremder Korridor auf
+   unter 0,3. Auf der Modulseite fiel ein **Teillauf gegen einen vollen auf
+   0,33** und wurde abgelehnt – von beiden Implementierungen unabhängig und mit
+   identischem Ergebnis, es ist also kein Implementierungsfehler, sondern die
+   Schwelle selbst. 0,45 liegt damit zwischen einem Lauf, der dazugehört, und
+   einem, der nicht dazugehört, und trennt sie nicht sauber.
+
+   Ein abgelehnter Teillauf ist ein verlorener Lauf, kein kaputter Grundriss –
+   der Schaden ist also einseitig. Trotzdem: **Bis mehrere volle Läufe
+   vorliegen, ist 0,45 eine Annahme und keine gemessene Grenze.** Wer sie
+   ändert, sollte an beiden Seiten nachmessen.
 7. **Abstimmen.** Für jede Zelle, die irgendein Lauf Wand nennt: `walls` ist die
    Zahl der Läufe mit einer Wandzelle **in einer Zelle Umkreis**, `seen` die
    Zahl derer, die die Zelle als Wand oder als frei kennen.
@@ -132,6 +145,19 @@ Die Toleranz von einer Zelle gehört in die Abstimmung, **nicht** in die
 Zellmenge. Zählt man die aufgeweiteten Zellen mit, werden aus 1816 gemessenen
 Zellen über 5000, und die Wohnung sieht aus, als hätte sie meterdicke Wände.
 Das ist ein Fehler, den man leicht macht – er stand in der ersten Fassung hier.
+
+### Die Drehung einmal je Winkel
+
+Der Suchlauf probiert denselben Winkel gegen einige hundert Verschiebungen. Eine
+Verschiebung ist eine Addition, eine Drehung sind vier Multiplikationen – also
+die Punkte einmal je Winkel drehen statt einmal je Winkel *und* Verschiebung.
+Identische Arithmetik, nur in anderer Reihenfolge. Auf der Modulseite, die alle
+Drehungen durchsucht, brachte das 82 auf 50 Sekunden; hier, wo nur vier Winkel
+probiert werden, sind es rund 7 %. Beide Seiten machen es jetzt so.
+
+Der naheliegende nächste Griff – Division durch die Zellgröße als
+Multiplikation mit dem Kehrwert – ist gemessen **nicht** schneller. Nicht
+machen.
 
 ### Die Drehungssuche darf einfacher sein
 
@@ -146,7 +172,9 @@ Grund für die Abkürzung war der Browser; ein Hintergrundprozess auf der
 FHEM-Kiste darf acht Sekunden brauchen. Eine stumpfe Suche über alle Drehungen
 in 3°-Schritten findet dieselbe Antwort – ein Test hält genau das fest
 (`test/plan.test.mjs`, „the dominant direction is an optimisation, not a
-crutch"). Damit entfällt die ganze Linien-Pipeline, die die Richtung liefert,
+crutch"). An einem echten Paar nachgemessen: alle Drehungen 6,5 s und 90,0°,
+vier Kandidaten 0,26 s und 90,3°, beide mit Güte 0,68. Genau so hat es die
+Modulseite gemacht. Damit entfällt die ganze Linien-Pipeline, die die Richtung liefert,
 und es bleiben Gitter, Ausrichtung, Einpassen und Abstimmung.
 
 Falls die Abkürzung doch gewünscht ist: die Richtung kommt **nicht** aus den
@@ -217,13 +245,46 @@ Ohne `plan-file` rechnet die Komponente den Plan selbst aus den neuesten
 `plan-runs` Aufzeichnungen. Beides muss dasselbe Bild ergeben; ein Browser-Test
 hält die zwei Wege gegeneinander.
 
-## Wenn die Datei woanders liegen soll
+## Wo die Datei steht – beantwortet
 
-Heute wird der Dateiname als Attribut gesetzt. Soll das Modul ihn bekanntgeben
-– etwa als Reading `planFile`, so wie es `trackFile` schon tut –, dann sagt
-bitte Bescheid, unter welchem Namen: die Komponente kann ihn dann binden, und
-niemand muss ihn mehr in die Seite schreiben. Das ist ein kleiner Zusatz und
-wartet bewusst darauf, dass die Modulseite entschieden hat.
+Das Modul rechnet den Grundriss seit v0.20.0 selbst und gibt ihn bekannt:
+
+| Reading | |
+|---|---|
+| `planFile` | Pfad der fertigen Datei, z. B. `./www/neato/plan-Staubsauger.json` |
+| `planCells` | Anzahl Zellen |
+| `planRuns` | wie viele Aufzeichnungen eingegangen sind |
+| `planState` | `ok`, `ok, 1 did not fit`, `failed: <Grund>`, `timed out` |
+
+Gerechnet wird auf `set <dev> buildPlan` oder mit `attr <dev> planAuto 1` nach
+jeder Reinigung. Die Datei liegt in `trackDir`, also in demselben Ordner wie
+die `.jsonl`-Aufzeichnungen.
+
+Die Komponente bindet das Reading:
+
+```html
+<ftui-neato-map view="plan" device="Staubsauger"
+                [plan-file]="Staubsauger:planFile"></ftui-neato-map>
+```
+
+Die eckige Klammer steht dabei am **Attributnamen**, nicht um den Wert – so
+macht FTUI3 alle Bindungen, siehe `[track-file]` daneben.
+
+`planFile` trägt einen **Pfad**, `trackFile` tut das auch. Die Komponente
+reduziert ihn auf den Dateinamen, weil die Aufzeichnungen ohnehin aus einem
+bekannten Ordner ausgeliefert werden; ein Schrägstrich in einem
+`encodeURIComponent` würde zu `%2F` und die Anfrage liefe ins Leere. Ein
+nackter Name geht unverändert durch, beide Schreibweisen funktionieren.
+
+Zwei Zustände, die dabei keine Fehler sind:
+
+* **Das Reading ist leer**, weil noch nie gerechnet wurde. Dann steht da
+  „Grundriss noch nicht gerechnet". Die Komponente rechnet in diesem Fall
+  ausdrücklich *nicht* selbst los – wer das Reading bindet, will die Rechnung
+  nicht auf dem Tablet. Ohne Bindung bleibt es beim bisherigen Verhalten.
+* **Die Datei steht im Reading, existiert aber noch nicht**, weil der Lauf noch
+  läuft. Dasselbe, und der Fehlschlag wird nicht gemerkt: der nächste Anlauf
+  versucht es wieder.
 
 ## Was ausdrücklich nicht behauptet wird
 

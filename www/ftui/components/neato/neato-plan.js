@@ -141,22 +141,45 @@ export function frameOf(walls, options = {}) {
   };
 }
 
-/** How well a run sits in a frame, turned and shifted. Between 0 and 1. */
-function fits(frame, walls, angle, x, y, every = 1) {
+/**
+ * The cells of a run, turned once.
+ *
+ * The sweep tries the same rotation against several hundred shifts, and a
+ * shift is an addition while a rotation is four multiplications. Doing the
+ * turn once per angle instead of once per angle and shift is the same
+ * arithmetic in a different order - on the module side, which searches every
+ * rotation rather than four, it took a run from 82 to 50 seconds.
+ */
+function turnedOnce(walls, angle, every = 1) {
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
   const stride = 2 * every;
-  let sum = 0;
-  let count = 0;
+  const out = new Float64Array(2 * Math.ceil(walls.length / stride));
+  let at = 0;
 
   for (let i = 0; i < walls.length; i += stride) {
-    const px = cos * walls[i] - sin * walls[i + 1] + x;
-    const py = sin * walls[i] + cos * walls[i + 1] + y;
-    sum += frame.weights.get(KEY(Math.round(px / frame.cell), Math.round(py / frame.cell))) || 0;
-    count++;
+    out[at++] = cos * walls[i] - sin * walls[i + 1];
+    out[at++] = sin * walls[i] + cos * walls[i + 1];
   }
 
-  return count ? sum / count : 0;
+  return out;
+}
+
+/** How well already turned cells sit in a frame when shifted. 0 to 1. */
+function fitsTurned(frame, turned, x, y) {
+  let sum = 0;
+
+  for (let i = 0; i < turned.length; i += 2) {
+    sum += frame.weights.get(KEY(Math.round((turned[i] + x) / frame.cell),
+      Math.round((turned[i + 1] + y) / frame.cell))) || 0;
+  }
+
+  return turned.length ? 2 * sum / turned.length : 0;
+}
+
+/** How well a run sits in a frame, turned and shifted. Between 0 and 1. */
+function fits(frame, walls, angle, x, y, every = 1) {
+  return fitsTurned(frame, turnedOnce(walls, angle, every), x, y);
 }
 
 /**
@@ -179,9 +202,10 @@ export function registerTo(frame, run, target, options = {}) {
   const sweep = (angles) => {
     let best = { angle: angles[0], x: 0, y: 0, score: -1 };
     for (const angle of angles) {
+      const turned = turnedOnce(run.walls, angle, sparse);
       for (let x = minX - margin; x <= maxX + margin; x += settings.step) {
         for (let y = minY - margin; y <= maxY + margin; y += settings.step) {
-          const score = fits(frame, run.walls, angle, x, y, sparse);
+          const score = fitsTurned(frame, turned, x, y);
           if (score > best.score) {
             best = { angle, x, y, score };
           }

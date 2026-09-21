@@ -93,7 +93,7 @@ Solange `state` auf `cleaning` steht, wird die laufende Aufzeichnung alle
 | Attribut | Standard | Bedeutung |
 |---|---|---|
 | `view` | – | Leer zeigt eine Aufzeichnung, `plan` den gemeinsamen Grundriss aus mehreren. |
-| `plan-file` | – | Fertiger Grundriss neben den Aufzeichnungen, z. B. `plan-Staubsauger.json`. Ohne den wird im Browser gerechnet – siehe unten, warum das ab einer Handvoll Läufen keine gute Idee ist. |
+| `plan-file` | – | Fertiger Grundriss neben den Aufzeichnungen. Bindbar: `[plan-file]="Staubsauger:planFile"`. Ein Pfad wird auf den Dateinamen reduziert. Ohne den wird im Browser gerechnet – siehe unten, warum das ab einer Handvoll Läufen keine gute Idee ist. |
 | `plan-runs` | `4` | Wie viele der neuesten Läufe in einen selbst gerechneten Grundriss eingehen. |
 | `plan-agree` | `0.5` | Welcher Anteil der Läufe, die hingesehen haben, eine Zelle Wand nennen muss. |
 | `show-disputed` | an | Zellen zeichnen, die ein Lauf Wand nennt und die anderen Boden. |
@@ -405,6 +405,19 @@ Frage. Die schreibt:
 ```sh
 node tools/make-plan.mjs /opt/fhem/www/neato Staubsauger --runs 8
 ```
+
+Seit v0.20.0 rechnet das Modul `74_NeatoLocal` den Grundriss selbst und legt
+ihn als `plan-<Gerät>.json` in `trackDir` ab. Dann genügt:
+
+```html
+<ftui-neato-map view="plan" device="Staubsauger"
+                [plan-file]="Staubsauger:planFile"></ftui-neato-map>
+```
+
+Das Reading trägt einen Pfad; die Komponente reduziert ihn auf den Dateinamen.
+Ist es leer, weil noch nie gerechnet wurde, steht da „Grundriss noch nicht
+gerechnet" – und es wird **nicht** ersatzweise im Browser gerechnet: wer das
+Reading bindet, will die Rechnung nicht auf dem Tablet.
 
 Heraus kommt `plan-Staubsauger.json` neben den Aufzeichnungen, und FHEMWEB
 liefert sie genauso aus wie diese:

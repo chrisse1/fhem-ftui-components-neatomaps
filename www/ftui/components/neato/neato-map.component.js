@@ -71,6 +71,7 @@ const TEXTS = {
     runs: '%s Läufe',
     oneRun: 'ein Lauf',
     noPlan: 'Kein Grundriss - keine Aufzeichnung gefunden',
+    planMissing: 'Grundriss noch nicht gerechnet',
   },
   en: {
     loading: 'Loading map …',
@@ -90,6 +91,7 @@ const TEXTS = {
     runs: '%s runs',
     oneRun: 'one run',
     noPlan: 'No floor plan - no recording found',
+    planMissing: 'No floor plan computed yet',
   },
 };
 
@@ -512,19 +514,74 @@ export class FtuiNeatoMap extends FtuiElement {
    * The result is kept. Nothing about it changes while the page is open
    * unless a new recording turns up.
    */
+  /**
+   * The plan file, as a name that can be asked for.
+   *
+   * The module's planFile reading carries a path - './www/neato/plan-X.json' -
+   * because trackFile does too and in FHEM one usually wants the path. The
+   * recordings are served out of one known folder, so only the last part of it
+   * is of any use here; the rest would end up percent-escaped in the URL and
+   * the request would go nowhere. A bare name passes through untouched.
+   */
+  get planFileName() {
+    return String(this.planFile || '').trim().split('/').pop().trim();
+  }
+
+  /**
+   * Whether the plan file comes from a reading rather than from the markup.
+   *
+   * It matters when the value is empty. Written by hand, empty means "no file,
+   * work it out yourself". Bound to a reading, empty means "the module has not
+   * computed it yet" - and then quietly loading four recordings and spending
+   * five seconds of a tablet's time on them is the opposite of what binding it
+   * was for.
+   *
+   * Asking the DOM does not work: FTUI reads a binding attribute and then
+   * removes it, and every property of an element carries its default as an
+   * attribute anyway, so hasAttribute('plan-file') is true either way. What is
+   * left is FTUI's own binding, which keeps what it parsed. That is somebody
+   * else's internals; if they ever move, this says "not bound" and the
+   * component computes the plan itself, which is what it did before.
+   */
+  get planFileBound() {
+    const readings = this.binding && this.binding.config
+      && this.binding.config.input && this.binding.config.input.readings;
+
+    return !!readings && Object.values(readings).some(entry =>
+      entry && entry.attributes && Object.prototype.hasOwnProperty.call(entry.attributes, 'planFile'));
+  }
+
   async loadPlan() {
     const names = this.sessions.slice(0, Math.max(1, Number(this.planRuns)));
-    const wanted = this.planFile ? `file:${this.planFile}` : names.join(',');
+    const file = this.planFileName;
+    const wanted = file ? `file:${file}` : names.join(',');
 
     if (this.plan && this.planKey === wanted) {
       this.note = '';
       return;
     }
 
-    if (this.planFile) {
-      this.plan = this.readPlan(await this.fetchJson(this.planFile));
+    if (file) {
+      const raw = await this.fetchJson(file);
+      if (!raw) {
+        // The reading names a file that is not there yet - the run it belongs
+        // to may still be going. Not an error, and not remembered either, so
+        // the next update tries again.
+        this.plan = null;
+        this.planKey = '';
+        this.note = this.texts.planMissing;
+        return;
+      }
+      this.plan = this.readPlan(raw);
       this.planKey = wanted;
       this.note = this.plan.cells.length ? '' : this.texts.noPlan;
+      return;
+    }
+
+    if (this.planFileBound) {
+      this.plan = null;
+      this.planKey = '';
+      this.note = this.texts.planMissing;
       return;
     }
 
@@ -557,11 +614,12 @@ export class FtuiNeatoMap extends FtuiElement {
     this.emitEvent('planBuilt', { runs: this.plan.runs, cells: this.plan.cells.length });
   }
 
+  /** The file, or null if it is not there. Only a broken file throws. */
   async fetchJson(name) {
     const response = await fetch((await this.baseUrl()) + encodeURIComponent(name),
       { credentials: 'same-origin' });
     if (!response.ok) {
-      throw new Error(`${response.status} ${response.statusText} for ${name}`);
+      return null;
     }
     return response.json();
   }

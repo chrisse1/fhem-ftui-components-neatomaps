@@ -2,6 +2,21 @@
 # Leerzeile an - neue Eintraege gehoeren also nach oben, und zwischen den
 # Bloecken steht genau eine Leerzeile. Eine Leerzeile direkt hier waere das
 # Ende der Anzeige, bevor sie angefangen hat.
+2026-09-21 ftui-neato-map 1.11.0
+ - plan-file vertraegt ein gebundenes Reading:
+   [plan-file]="Staubsauger:planFile". Das Modul rechnet den Grundriss seit
+   v0.20.0 selbst und gibt den Pfad dort bekannt
+ - ein Pfad im Reading wird auf den Dateinamen reduziert; ein nackter Name
+   geht unveraendert durch
+ - ist das Reading leer, steht da "Grundriss noch nicht gerechnet" statt
+   ersatzweise im Browser zu rechnen: wer das Reading bindet, will die
+   Rechnung nicht auf dem Tablet. Ohne Bindung bleibt es beim bisherigen
+   Verhalten
+ - eine Plandatei, die es (noch) nicht gibt, ist eine Meldung und kein
+   Fehler, und wird nicht gemerkt - der naechste Anlauf versucht es wieder
+ - die Drehung wird beim Suchen einmal je Winkel gerechnet statt einmal je
+   Verschiebung. Identische Arithmetik, von der Modulseite uebernommen
+
 2026-09-21 ftui-neato-map 1.10.0
  - docs/plan-format.md beschreibt das Dateiformat des Grundrisses und das
    Verfahren dahinter, fuer eine zweite Implementierung im Modul

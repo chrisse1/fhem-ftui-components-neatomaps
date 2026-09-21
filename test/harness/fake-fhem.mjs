@@ -41,7 +41,7 @@ const TYPES = {
  */
 export async function startFakeFhem(options) {
   const state = {
-    readings: Object.assign({ state: 'docked', trackFile: '' }, options.readings),
+    readings: Object.assign({ state: 'docked', trackFile: '', planFile: '' }, options.readings),
     refusePerl: Boolean(options.refusePerl),
     commands: [],
     requests: [],
@@ -89,10 +89,11 @@ export async function startFakeFhem(options) {
             Name: 'Staubsauger',
             Internals: { NAME: 'Staubsauger', TYPE: 'NeatoLocal' },
             Attributes: {},
-            Readings: {
-              state: { Value: state.readings.state, Time: '2026-09-20 12:00:00' },
-              trackFile: { Value: state.readings.trackFile, Time: '2026-09-20 11:59:11' },
-            },
+            // Whatever the test set up - the component binds to state and
+            // trackFile, and since the module also publishes planFile, to
+            // anything else a page may ask for.
+            Readings: Object.fromEntries(Object.entries(state.readings).map(
+              ([name, value]) => [name, { Value: value, Time: '2026-09-20 12:00:00' }])),
           }],
           totalResultsReturned: 1,
         }), 'application/json; charset=utf-8');

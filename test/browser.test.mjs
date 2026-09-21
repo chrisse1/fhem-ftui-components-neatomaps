@@ -102,6 +102,10 @@ async function open(options = {}) {
       trackFile: options.trackFile !== undefined
         ? options.trackFile
         : './www/neato/Staubsauger-2026-09-20_11-59-11.jsonl',
+      // As the module publishes it: a path, not a bare name.
+      planFile: options.planFile !== undefined
+        ? options.planFile
+        : './www/neato/plan-Staubsauger.json',
     },
     refusePerl: options.refusePerl,
   });
@@ -861,6 +865,91 @@ test('the disputed cells can be turned off', { skip: missing.join(', ') || false
     await context.close();
   }
 });
+
+test('the plan file can come from a reading, path and all',
+  { skip: missing.join(', ') || false }, async () => {
+    const context = await open();
+
+    try {
+      // The bound tile has nothing to draw until the reading has arrived, so
+      // it shows the "not computed yet" message first and the map after.
+      await context.page.waitForFunction(() =>
+        document.querySelector('#map-planbound').shadowRoot.querySelector('.stage svg'),
+      null, { timeout: 15000 });
+
+      const bound = await probe(context.page, 'map-planbound');
+      const written = await probe(context.page, 'map-planfile');
+
+      // The reading carries './www/neato/plan-Staubsauger.json'; only the last
+      // part of that is a file the recordings' folder can be asked for.
+      assert.equal(bound.note, '', `the bound plan says: ${bound.note}`);
+      assert.equal(bound.planSure, written.planSure);
+      assert.equal(bound.planAlone, written.planAlone);
+      assert.equal(bound.planQuarrel, written.planQuarrel);
+
+      const asked = context.fhem.state.requests.filter(path => path.includes('plan-Staubsauger'));
+      assert.ok(asked.length > 0, 'the plan file was never fetched');
+      assert.ok(asked.every(path => !path.includes('%2F')),
+        `a path was escaped into the file name: ${asked.find(path => path.includes('%2F'))}`);
+
+      // A bare name has to keep working - the attribute may be written by hand.
+      const plain = await context.page.evaluate(async () => {
+        const map = document.querySelector('#map-planbound');
+        map.setAttribute('plan-file', 'plan-Staubsauger.json');
+        await new Promise(done => setTimeout(done, 500));
+        return {
+          note: map.shadowRoot.querySelector('.note').textContent,
+          sure: map.shadowRoot.querySelectorAll('.stage svg g.plan-sure rect').length,
+        };
+      });
+      assert.equal(plain.note, '');
+      assert.equal(plain.sure, written.planSure);
+    } finally {
+      await context.close();
+    }
+  });
+
+test('a plan that has not been computed yet is a message, not a wreck',
+  { skip: missing.join(', ') || false }, async () => {
+    // Two states the module brings with it: the reading is still empty
+    // because nobody has pressed buildPlan, and it names a file that is not
+    // there yet because the run it belongs to is still going.
+    const context = await open({ planFile: '' });
+
+    try {
+      const empty = await probe(context.page, 'map-planbound');
+      assert.ok(empty.note.length > 0, 'an empty reading drew something');
+      assert.equal(empty.planSure, 0);
+      assert.equal(empty.dots, 0, 'it fell back to drawing a single run');
+
+      // And it did not quietly load four recordings to work it out itself -
+      // that is what binding the reading is for.
+      const fetched = context.fhem.state.requests.filter(path => path.endsWith('.jsonl'));
+      const mine = fetched.filter(path => path.includes('11-27-11'));
+      assert.equal(mine.length, 0,
+        'the bound plan computed itself from the recordings although the module owns it');
+
+      const gone = await context.page.evaluate(async () => {
+        const map = document.querySelector('#map-planbound');
+        map.setAttribute('plan-file', './www/neato/plan-Gibtsnicht.json');
+        await new Promise(done => setTimeout(done, 600));
+        return {
+          note: map.shadowRoot.querySelector('.note').textContent,
+          svg: !!map.shadowRoot.querySelector('.stage svg'),
+        };
+      });
+      assert.ok(gone.note.length > 0, 'a missing file drew a map out of nowhere');
+      assert.equal(gone.svg, false);
+
+      // Nothing threw. The browser logs the 404 this test asked for; what
+      // must not be there is an exception.
+      const unexpected = context.problems.filter(line => !line.includes('plan-Gibtsnicht.json'));
+      assert.deepEqual(unexpected, []);
+      assert.ok((await probe(context.page, 'map-listed')).dots > 100);
+    } finally {
+      await context.close();
+    }
+  });
 
 test('the raw endpoints can be drawn instead of the grid',
   { skip: missing.join(', ') || false }, async () => {

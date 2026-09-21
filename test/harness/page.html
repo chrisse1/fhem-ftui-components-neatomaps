@@ -83,6 +83,13 @@
                       show-info="false" plan-file="plan-Staubsauger.json"></ftui-neato-map>
     </ftui-grid-tile>
 
+    <!-- Und derselbe Grundriss, aber der Dateiname kommt aus dem Reading
+         planFile des Moduls. Das Reading traegt einen Pfad. -->
+    <ftui-grid-tile id="planbound" row="10" col="1" width="3" height="3">
+      <ftui-neato-map id="map-planbound" view="plan" device="Staubsauger"
+                      show-info="false" [plan-file]="Staubsauger:planFile"></ftui-neato-map>
+    </ftui-grid-tile>
+
     <!-- The raw endpoints instead of the grid, in a tile of another shape. -->
     <ftui-grid-tile id="points" row="5" col="1" width="3" height="2">
       <ftui-neato-map id="map-points" show-points show-info="false"

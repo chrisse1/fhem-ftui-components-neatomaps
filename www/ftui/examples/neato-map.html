@@ -60,6 +60,19 @@
                       point-color="info"></ftui-neato-map>
     </ftui-grid-tile>
 
+
+    <!-- Der gemeinsame Grundriss aus mehreren Laeufen. Das Modul rechnet ihn
+         ab v0.20.0 selbst ("set Staubsauger buildPlan", oder
+         "attr Staubsauger planAuto 1") und nennt die Datei im Reading
+         planFile - hier wird nur noch gezeichnet. Ohne das Modul laesst man
+         plan-file weg, dann rechnet die Komponente selbst aus den neuesten
+         vier Laeufen; das kostet auf einem Tablet ein paar Sekunden. -->
+    <ftui-grid-tile row="6" col="1" width="6" height="5">
+      <ftui-grid-header>Grundriss</ftui-grid-header>
+      <ftui-neato-map device="Staubsauger" view="plan"
+                      [plan-file]="Staubsauger:planFile"></ftui-neato-map>
+    </ftui-grid-tile>
+
   </ftui-grid>
 
   <!-- Dieselbe Karte in einem Popup. In der Kachelschrift wird die Zeile dort
