@@ -329,6 +329,48 @@ Gitter als Wand zählt – die rohe Evidenz, ohne jede Glättung.
 Dieselbe Aufzeichnung, links `walls="cells"` mit 158 Rechtecken, rechts der
 Standard mit 26 Linien.
 
+## Mehrere Läufe als ein Grundriss
+
+`neato-plan.js` legt mehrere Aufzeichnungen übereinander. Das ist noch **nicht**
+in der Komponente verdrahtet – die Rechnung steht, die Anzeige kommt als
+Nächstes.
+
+Ein einzelner Lauf ist die Karte *dieses Laufs*: eigener Nullpunkt, eigene
+Nordrichtung, und er kennt nur die Räume, in die der Roboter an dem Tag kam.
+Legt man mehrere übereinander, geht zweierlei, was keiner allein kann – die
+fehlenden Wände kommen dazu, und über jede Zelle kann abgestimmt werden. Was
+acht von zehn Läufen Wand nennen, ist Wand; was einer Wand nennt, während die
+anderen an dieselbe Stelle sahen und Boden fanden, war der Wäscheständer.
+
+Das Zusammenlegen ist dasselbe Problem, das `neato-align.js` innerhalb eines
+Laufs löst, eine Etage höher: dort wird eine Umdrehung um Zentimeter gerückt,
+hier ein ganzer Lauf gedreht. Der Unterschied ist, dass nichts vorher bekannt
+ist – weder Drehung noch Versatz. Bezahlbar wird das über die vorherrschende
+Wandrichtung: die misst jeder Lauf, und zwei Läufe derselben Wohnung können
+sich nur um deren Differenz plus ein Vielfaches des rechten Winkels
+unterscheiden. Vier Kandidaten statt hundertzwanzig – an drei echten Läufen
+gemessen rund 0,2 s statt 8 s pro Lauf.
+
+An genau diesen drei Läufen (einer über eine Stunde, zwei kürzere vom Vortag):
+
+| | |
+|---|---|
+| gefundene Drehungen | 89,5° und 90,3°, Versatz unter 15 cm |
+| Wandzellen im Plan | 2658 gegenüber 1816 im dichtesten Lauf allein |
+| davon wirklich neues Gebiet | 381 Zellen = 3,8 m² Wand, die der Stundenlauf nicht hat |
+| strittig | 52 Zellen = 0,5 m² – Verdacht auf Möbel, Personen, offene Türen |
+| Rechenzeit | 0,8 s Aufnehmen, 0,6 s Zusammenlegen |
+
+Zwei Dinge behauptet das ausdrücklich **nicht**. Erstens, dass die Läufe einen
+gemeinsamen Nullpunkt haben – in diesen Aufzeichnungen haben sie einen, die
+Basis steht am selben Fleck, aber die Suche verlässt sich nicht darauf.
+Zweitens, dass mehr Läufe immer besser sind: zwei Läufe vom selben Nachmittag
+sehen dieselben Möbel am selben Platz und sind sich aus dem falschen Grund
+einig. Die Abstimmung ist nur so unabhängig wie die Läufe.
+
+Ein Lauf, der nicht passt, wird **abgelehnt** statt hineingebogen – eine andere
+Etage in denselben Rahmen zu zwingen zieht Wände quer durch Räume.
+
 ## Wie der Lauf gelaufen ist
 
 Zwei Dinge stehen in der Aufzeichnung, die man der Karte nicht ansieht.
@@ -427,6 +469,7 @@ node --test test/session.test.mjs      # nur die Karten-Mathematik
 node --test test/align.test.mjs        # das Aufeinanderlegen der Umdrehungen
 node --test test/walls.test.mjs        # die Vereinfachung der Wände
 node --test test/run.test.mjs          # ausgelassener Boden und Stehenbleiben
+node --test test/plan.test.mjs         # mehrere Laeufe als ein Grundriss
 node --test test/controls.test.mjs     # der Index für FHEMs update
 ```
 

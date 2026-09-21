@@ -2,6 +2,16 @@
 # Leerzeile an - neue Eintraege gehoeren also nach oben, und zwischen den
 # Bloecken steht genau eine Leerzeile. Eine Leerzeile direkt hier waere das
 # Ende der Anzeige, bevor sie angefangen hat.
+2026-09-21 ftui-neato-map 1.8.0
+ - neato-plan.js legt mehrere Aufzeichnungen zu einem Grundriss zusammen:
+   Drehung und Versatz werden gesucht, dann stimmt jede Zelle ab. An drei
+   echten Laeufen: 2658 Wandzellen statt 1816 im dichtesten Lauf allein,
+   davon 3,8 m2 wirklich neu, und 0,5 m2 strittig (Moebel, offene Tueren)
+ - die Suche geht ueber die vorherrschende Wandrichtung: vier Kandidaten
+   statt hundertzwanzig, 0,2 s statt 8 s je Lauf
+ - ein Lauf, der nicht passt, wird abgelehnt statt hineingebogen
+ - noch nicht in der Komponente verdrahtet, nur die Rechnung
+
 2026-09-21 ftui-neato-map 1.7.0
  - walls="dots" ist jetzt der Standard: die gemessenen Zellen als einzelne
    Punkte. walls="lines" zieht weiter gerade Linien daraus
