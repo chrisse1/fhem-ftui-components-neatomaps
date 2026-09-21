@@ -2,6 +2,13 @@
 # Leerzeile an - neue Eintraege gehoeren also nach oben, und zwischen den
 # Bloecken steht genau eine Leerzeile. Eine Leerzeile direkt hier waere das
 # Ende der Anzeige, bevor sie angefangen hat.
+2026-09-21 ftui-neato-map 1.4.0
+ - die Karte dreht sich in die Vierteldrehung, die die Kachel am besten
+   fuellt. Die Achsen einer Aufzeichnung sind die Blickrichtung des Roboters
+   beim Losfahren, deshalb liegt dieselbe Wohnung mal hochkant und mal quer
+ - rotate="0|90|180|270" legt es fest, rotate="auto" ist der Standard
+ - aendert die Kachel ihre Form, wird nur neu gezeichnet, nicht neu gerechnet
+
 2026-09-21 ftui-neato-map 1.3.0
  - wo die Fahrspur laeuft, wird keine Wand mehr gezeichnet: der Roboter ist
    eine Scheibe von 30 cm und faehrt nicht durch Waende. In der geprueften

@@ -263,9 +263,71 @@ test('the tile size decides the map size', { skip: missing.join(', ') || false }
     assert.ok(after.box.height > 0.7 * after.tile.height);
     assert.ok(after.svgBox.width > after.box.width - 2);
     assert.ok(after.svgBox.height <= after.box.height + 1);
-    // Same map, same extent - only the box around it changed.
-    assert.equal(before.viewBox, after.viewBox);
+    // Same map, same extent - only the box around it changed, and with
+    // rotate="auto" possibly the quarter it is turned to, which swaps the two
+    // sides of the view box.
+    const sides = (viewBox) => viewBox.split(' ').slice(2).sort();
+    assert.deepEqual(sides(after.viewBox), sides(before.viewBox));
     await context.shot('resized.png');
+  } finally {
+    await context.close();
+  }
+});
+
+test('the map turns to fill the tile', { skip: missing.join(', ') || false }, async () => {
+  const context = await open();
+
+  try {
+    const tall = await context.page.evaluate(() => {
+      const tile = document.querySelector('#listed');
+      tile.setAttribute('width', '2');
+      tile.setAttribute('height', '6');
+      document.querySelector('ftui-grid').configureGrid();
+      return null;
+    });
+    await context.page.waitForTimeout(400);
+    const upright = (await probe(context.page, 'map-listed')).viewBox.split(' ');
+
+    await context.page.evaluate(() => {
+      const tile = document.querySelector('#listed');
+      tile.setAttribute('width', '8');
+      tile.setAttribute('height', '2');
+      document.querySelector('ftui-grid').configureGrid();
+    });
+    await context.page.waitForTimeout(500);
+    const wide = (await probe(context.page, 'map-listed')).viewBox.split(' ');
+
+    // The same map, the same two numbers - but the tall tile gets the upright
+    // view box and the wide one the lying box.
+    assert.deepEqual([...upright].sort(), [...wide].sort());
+    assert.ok(Number(upright[3]) > Number(upright[2]), `upright: ${upright.join(' ')}`);
+    assert.ok(Number(wide[2]) > Number(wide[3]), `wide: ${wide.join(' ')}`);
+    assert.equal(tall, null);
+  } finally {
+    await context.close();
+  }
+});
+
+test('a fixed rotation is obeyed', { skip: missing.join(', ') || false }, async () => {
+  const context = await open();
+
+  try {
+    const boxes = await context.page.evaluate(async () => {
+      const map = document.querySelector('#map-listed');
+      const read = () => map.shadowRoot.querySelector('.stage svg').getAttribute('viewBox');
+      map.setAttribute('rotate', '0');
+      await new Promise(done => setTimeout(done, 300));
+      const zero = read();
+      map.setAttribute('rotate', '90');
+      await new Promise(done => setTimeout(done, 300));
+      const ninety = read();
+      return { zero, ninety };
+    });
+
+    const zero = boxes.zero.split(' ');
+    const ninety = boxes.ninety.split(' ');
+    assert.deepEqual([zero[2], zero[3]], [ninety[3], ninety[2]],
+      'a quarter turn has to swap the sides of the view box');
   } finally {
     await context.close();
   }

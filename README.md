@@ -118,6 +118,7 @@ Solange `state` auf `cleaning` steht, wird die laufende Aufzeichnung alle
 | `threshold` | `0.25` | Ab welchem Anteil Treffer eine Zelle als Wand gilt. |
 | `min-seen` | `2` | Wie oft eine Zelle beobachtet sein muss, bevor sie überhaupt zählt. |
 | `pad` | `0.4` | Rand um die Karte in Metern. |
+| `rotate` | `auto` | Wie herum die Karte liegt. `auto` dreht sie in die Vierteldrehung, die die Kachel am besten füllt; `0`, `90`, `180`, `270` legen sie fest, im Uhrzeigersinn. |
 | `show-track` | an | Die gefahrene Spur zeichnen. |
 | `show-points` | aus | Die rohen Endpunkte statt des Belegungsgitters zeichnen. |
 | `show-info` | an | Zeile mit Datum, Strecke, Dauer und Zähler. |
@@ -320,6 +321,27 @@ beschrieben. Zwei Fallen, die dort stehen und hier in Tests eingemauert sind:
 Und was die Karte *nicht* ist: kein Grundriss der Wohnung, sondern des Laufs.
 Fehlt ein Raum, war der Roboter nicht drin. Zwei Läufe lassen sich nicht
 übereinanderlegen, jeder hat seinen eigenen Nullpunkt.
+
+### Wie herum die Karte liegt
+
+Der Roboter hat keinen Kompass. Sein Nullpunkt ist da, wo er losgefahren ist,
+und seine x-Achse zeigt dorthin, wo er in dem Moment hingeschaut hat. Dieselbe
+Wohnung kommt darum je nach Lauf hochkant oder quer heraus – nicht weil die
+Karte schief wäre, sondern weil die Basis um einen rechten Winkel anders stand
+oder er beim Start ein Stück gedreht hatte. Zwei Läufe aus derselben Wohnung:
+
+| | Startwinkel | Ausdehnung | vorherrschende Richtung |
+|---|---|---|---|
+| ganze Wohnung | 182° | 9,4 × 14,7 m, hochkant | 0,0° |
+| halbe Wohnung | 0° | 11,6 × 8,8 m, quer | 89° |
+
+Deshalb dreht `rotate="auto"` die Karte auf die Vierteldrehung, die die Kachel
+besser ausnutzt, statt sich auf eine Richtung zu verlassen, die es in den Daten
+nicht gibt. Gedreht wird nur die Zeichnung: Die Messwerte bleiben, wie sie sind.
+Wer es fest haben will, schreibt `rotate="90"` – im Uhrzeigersinn, wie eine
+gedrehte Fotografie. Ändert die Kachel ihre Form, wird die Vierteldrehung neu
+entschieden und nur neu gezeichnet; gelesen und gerechnet wird nichts noch
+einmal.
 
 Gerechnet wird beim Laden, im Haupt-Thread. Für die Referenzaufzeichnung sind
 das rund 15 ms, für einen echten Lauf über eine ganze Wohnung – 595 Scans,

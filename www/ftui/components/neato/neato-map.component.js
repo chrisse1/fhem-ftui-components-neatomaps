@@ -20,7 +20,7 @@
 */
 
 import { FtuiElement } from '../element.component.js';
-import { isNumeric } from '../../modules/ftui/ftui.helper.js';
+import { isNumeric, debounce } from '../../modules/ftui/ftui.helper.js';
 import * as track from './neato-track.js';
 import { wallLines, wallTest } from './neato-walls.js';
 import { alignScans } from './neato-align.js';
@@ -109,6 +109,16 @@ export class FtuiNeatoMap extends FtuiElement {
     this.olderButton = this.shadowRoot.querySelector('.older');
     this.newerButton = this.shadowRoot.querySelector('.newer');
 
+    // With rotate="auto" the tile's shape decides how the map is turned, so a
+    // tile that changes shape needs the drawing built again. The data behind
+    // it is not touched - this is a redraw, not a reload.
+    // FTUI's debounce takes the delay at call time, not here.
+    this.onStageResized = debounce(() => {
+      if (String(this.rotate).toLowerCase() === 'auto' && this.session && !this.note) {
+        this.render();
+      }
+    }, this);
+
     this.onVisibilityChanged = () => {
       this.startPolling();
       if (!this.session) {
@@ -167,6 +177,10 @@ export class FtuiNeatoMap extends FtuiElement {
       showPoints: false,
       showInfo: true,
       showControls: true,
+      // Turning the map a quarter at a time. 'auto' picks whichever of the
+      // four fills the tile best, which is what a recording needs whose axes
+      // are the robot's heading at the moment it set off.
+      rotate: 'auto',
       // Sizes of the line below the map and of the arrows. A bare number is
       // em, as elsewhere in FTUI; any CSS length works as well.
       textSize: '',
@@ -213,6 +227,10 @@ export class FtuiNeatoMap extends FtuiElement {
 
   onConnected() {
     document.addEventListener('ftuiVisibilityChanged', this.onVisibilityChanged, false);
+    if (typeof ResizeObserver === 'function') {
+      this.stageObserver = new ResizeObserver(() => this.onStageResized(150));
+      this.stageObserver.observe(this.stage);
+    }
     this.note = this.texts.loading;
     this.render();
     this.requestUpdate({ list: true });
@@ -220,6 +238,10 @@ export class FtuiNeatoMap extends FtuiElement {
 
   onDisconnected() {
     document.removeEventListener('ftuiVisibilityChanged', this.onVisibilityChanged, false);
+    if (this.stageObserver) {
+      this.stageObserver.disconnect();
+      this.stageObserver = null;
+    }
     this.stopPolling();
   }
 
@@ -282,6 +304,7 @@ export class FtuiNeatoMap extends FtuiElement {
         this.view = null;
         this.requestUpdate({});
         break;
+      case 'rotate':
       case 'pad':
       case 'show-track':
       case 'show-points':
@@ -660,6 +683,33 @@ export class FtuiNeatoMap extends FtuiElement {
   }
 
   /**
+   * How far the map is turned, in quarters.
+   *
+   * The axes of a recording are the robot's heading when it set off, so the
+   * same flat comes out upright in one run and on its side in the next.
+   * 'auto' turns it to whichever quarter fills the tile best.
+   */
+  quarters(width, height) {
+    const asked = String(this.rotate || '').trim().toLowerCase();
+
+    if (asked !== 'auto' && asked !== '') {
+      return ((Math.round(Number(asked) / 90) % 4) + 4) % 4;
+    }
+
+    const box = this.stage.getBoundingClientRect();
+    if (!(box.width > 0 && box.height > 0)) {
+      return 0;                                  // not laid out yet
+    }
+
+    // How much of the tile each of the two shapes covers. A quarter turn
+    // swaps width and height, so there are only two answers to compare.
+    const fill = (w, h) => Math.min(box.width / w, box.height / h) ** 2 * w * h
+      / (box.width * box.height);
+
+    return fill(height, width) > fill(width, height) * 1.02 ? 1 : 0;
+  }
+
+  /**
    * The session as an SVG that scales with the tile.
    *
    * Everything is drawn in metres and the view box is the extent of the run, so
@@ -679,9 +729,23 @@ export class FtuiNeatoMap extends FtuiElement {
     const sx = (x) => (x - minX + pad).toFixed(3);
     const sy = (y) => (maxY - y + pad).toFixed(3);
 
+    // A quarter turn swaps the two sides of the view box, and the drawing is
+    // turned inside it - the coordinates themselves stay as they are.
+    const turns = this.quarters(width, height);
+    const across = turns % 2 === 1;
+    const boxWidth = across ? height : width;
+    const boxHeight = across ? width : height;
+    const spin = [
+      '',
+      ` transform="translate(${height.toFixed(3)},0) rotate(90)"`,
+      ` transform="translate(${width.toFixed(3)},${height.toFixed(3)}) rotate(180)"`,
+      ` transform="translate(0,${width.toFixed(3)}) rotate(270)"`,
+    ][turns];
+
     const parts = [
-      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width.toFixed(3)} ${height.toFixed(3)}"`,
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${boxWidth.toFixed(3)} ${boxHeight.toFixed(3)}"`,
       ` preserveAspectRatio="xMidYMid meet" shape-rendering="crispEdges">`,
+      `<g${spin}>`,
     ];
 
     if (this.showPoints) {
@@ -720,7 +784,7 @@ export class FtuiNeatoMap extends FtuiElement {
         + ` cx="${sx(last.x)}" cy="${sy(last.y)}" r="${radius.toFixed(3)}"/>`);
     }
 
-    parts.push('</svg>');
+    parts.push('</g></svg>');
     return parts.join('');
   }
 
