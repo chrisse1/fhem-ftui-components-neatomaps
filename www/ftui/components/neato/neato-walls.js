@@ -32,8 +32,19 @@
 import { worldPoints } from './neato-track.js';
 
 const DEFAULTS = {
-  // How far a point may sit off a line before the line is split in two.
+  // How far a point may sit off a line before the line is split in two. It
+  // is also the measure for joining two pieces: how far apart their lines
+  // may lie, and how far the angle between them may open up.
   tolerance: 0.04,
+  // The angle two pieces may differ by and still be the same wall. Wide open
+  // and a flat full of furniture always has a partner that fits by accident,
+  // and the joins wander off diagonally across rooms.
+  joinDegrees: 4,
+  // How far apart their lines may lie across the direction. A wall is seen
+  // from several places over an hour and lands a few centimetres apart each
+  // time; too strict and one wall stays a bundle of parallel strokes, too
+  // loose and two walls become one.
+  joinOffset: 0.12,
   // A jump this size in a revolution ends a run of points. A wall met at a
   // sharp angle spreads its points out, so this is wider than it looks like
   // it should be - and a run that is not straight is cut up again right
@@ -42,9 +53,10 @@ const DEFAULTS = {
   // Gaps up to this length are closed while joining - a doorway is not.
   gap: 0.80,
   // Shorter pieces are left out: crumbs, chair legs, the corner of a box.
-  // Measured against the reference recording, this is where the scribble
-  // between the walls goes without the walls going with it.
-  minLength: 0.40,
+  // Measured against two recordings - a thinned excerpt of ten revolutions
+  // and a full hour over a whole flat - this is where the scribble between
+  // the walls goes without the walls going with it.
+  minLength: 0.60,
   // Pieces off the main direction by less than this are turned onto it.
   snapDegrees: 8,
   // How much of a line the occupancy grid has to call a wall. Not all of it:
@@ -220,17 +232,26 @@ function line(piece) {
   const spread = Math.sqrt(across / n);
 
   // The ends are the outermost of the ends collected so far, projected onto
-  // the line - the piece never grows beyond what was measured.
+  // the line - the piece never grows beyond what was measured. On the way,
+  // the farthest any of them sits off the line: the spread above is a mean
+  // and a mean drowns a few stray ends in a thousand well behaved points,
+  // which is how a chain of joins can wander off across a flat.
   let min = Infinity;
   let max = -Infinity;
+  let reach = 0;
   for (let i = 0; i < piece.ends.length; i += 2) {
-    const t = (piece.ends[i] - mx) * ux + (piece.ends[i + 1] - my) * uy;
+    const dx = piece.ends[i] - mx;
+    const dy = piece.ends[i + 1] - my;
+    const t = dx * ux + dy * uy;
+    const off = Math.abs(-dy * ux + dx * uy);
     if (t < min) { min = t; }
     if (t > max) { max = t; }
+    if (off > reach) { reach = off; }
   }
 
   piece.angle = angle;
   piece.spread = spread;
+  piece.reach = reach;
   piece.x0 = mx + min * ux;
   piece.y0 = my + min * uy;
   piece.x1 = mx + max * ux;
@@ -338,7 +359,7 @@ function chains(group, settings) {
     const joint = line(sums);
     // Same rule as for a pairwise join: a line that no longer carries its
     // points is not one, and then the pieces stay as they were.
-    if (joint.spread <= settings.tolerance) {
+    if (joint.spread <= settings.tolerance && joint.reach <= settings.joinOffset * 1.5) {
       out.push(joint);
     } else {
       out.push(...chain);
@@ -368,12 +389,12 @@ function chains(group, settings) {
  * piece are the ones in its own bucket and the neighbouring ones.
  */
 function join(pieces, settings) {
-  const angleStep = 10 * Math.PI / 180;
+  const angleStep = Math.max(settings.joinDegrees, 1) * Math.PI / 180;
   // How far apart two lines may lie across their direction - not how far
   // along it, which is what the gap is for. Wide bins here would put every
   // piece of a whole wall flight into one list and turn the lookup back into
   // comparing everything with everything.
-  const offsetStep = Math.max(settings.gap * 0.15 + settings.tolerance, 0.05);
+  const offsetStep = Math.max(settings.joinOffset, 0.02);
 
   let current = pieces.slice().sort((a, b) => b.length - a.length);
 
@@ -456,7 +477,7 @@ function bucketKeys(piece, angleStep, offsetStep) {
 function mergePieces(a, b, settings) {
   let delta = Math.abs(a.angle - b.angle) % Math.PI;
   delta = Math.min(delta, Math.PI - delta);
-  if (delta > 10 * Math.PI / 180) {
+  if (delta > Math.max(settings.joinDegrees, 1) * Math.PI / 180) {
     return null;
   }
 
@@ -466,8 +487,10 @@ function mergePieces(a, b, settings) {
   const my = (a.y0 + a.y1) / 2;
   const off = (x, y) => Math.abs(-(y - my) * ux + (x - mx) * uy);
 
-  // Both ends of the candidate have to lie on the same line, ...
-  if (Math.max(off(b.x0, b.y0), off(b.x1, b.y1)) > settings.gap * 0.15 + settings.tolerance) {
+  // Both ends of the candidate have to lie on the same line - measured
+  // against how far a wall moves between two sightings, not against how wide
+  // the gap is.
+  if (Math.max(off(b.x0, b.y0), off(b.x1, b.y1)) > settings.joinOffset) {
     return null;
   }
 
@@ -491,8 +514,9 @@ function mergePieces(a, b, settings) {
   });
 
   // A joint line that no longer carries its points is not a wall but a
-  // compromise between two of them.
-  if (joint.spread > settings.tolerance) {
+  // compromise between two of them - measured both as the average distance
+  // of the points and as the worst of the ends.
+  if (joint.spread > settings.tolerance || joint.reach > settings.joinOffset * 1.5) {
     return null;
   }
 

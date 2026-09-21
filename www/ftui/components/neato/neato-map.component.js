@@ -151,7 +151,9 @@ export class FtuiNeatoMap extends FtuiElement {
       walls: 'lines',
       lineTolerance: 0.04,
       joinGap: 0.8,
-      minWall: 0.4,
+      joinOffset: 0.12,
+      joinAngle: 4,
+      minWall: 0.6,
       snapAngle: 8,
       // how it looks
       showTrack: true,
@@ -262,6 +264,8 @@ export class FtuiNeatoMap extends FtuiElement {
       case 'walls':
       case 'line-tolerance':
       case 'join-gap':
+      case 'join-offset':
+      case 'join-angle':
       case 'min-wall':
       case 'snap-angle':
         this.view = null;
@@ -798,6 +802,8 @@ export class FtuiNeatoMap extends FtuiElement {
         wallTest(this.view.grid, threshold, seen), {
           tolerance: Number(this.lineTolerance),
           gap: Number(this.joinGap),
+          joinOffset: Number(this.joinOffset),
+          joinDegrees: Number(this.joinAngle),
           minLength: Number(this.minWall),
           snapDegrees: Number(this.snapAngle),
         });

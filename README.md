@@ -106,7 +106,9 @@ Solange `state` auf `cleaning` steht, wird die laufende Aufzeichnung alle
 | `walls` | `lines` | Wie die Wände gezeichnet werden: `lines` zieht gerade Linien daraus, `cells` zeigt die Gitterzellen der rohen Evidenz. |
 | `line-tolerance` | `0.04` | Wie weit ein Messpunkt von seiner Linie abweichen darf, in Metern. Größer heißt glatter und ungenauer. |
 | `join-gap` | `0.8` | Bis zu welcher Lücke zwei Stücke derselben Flucht zu einer Wand verbunden werden. `0` verbindet nichts. |
-| `min-wall` | `0.4` | Kürzere Stücke werden weggelassen – Stuhlbeine, Kabel, Kistenecken. |
+| `join-offset` | `0.12` | Wie weit zwei Stücke quer zur Richtung auseinanderliegen dürfen, um als dieselbe Wand zu gelten. Zu streng lässt eine Wand als Bündel paralleler Striche stehen, zu großzügig macht aus zwei Wänden eine. |
+| `join-angle` | `4` | Wie viel Grad zwei Stücke sich unterscheiden dürfen. |
+| `min-wall` | `0.6` | Kürzere Stücke werden weggelassen – Stuhlbeine, Kabel, Kistenecken. |
 | `snap-angle` | `8` | Wie weit ein Stück von der vorherrschenden Richtung abweichen darf, um darauf eingerastet zu werden, in Grad. `0` rastet nichts ein. |
 | `cell` | `0.10` | Zellgröße des Belegungsgitters in Metern. |
 | `threshold` | `0.25` | Ab welchem Anteil Treffer eine Zelle als Wand gilt. |
@@ -210,7 +212,12 @@ Schritten:
    `line-tolerance` abliegt.
 3. Stücke, die auf derselben Geraden liegen, werden verbunden, auch über die
    Lücken hinweg, die Möbel und Türöffnungen lassen (`join-gap`) – aber nur,
-   solange die gemeinsame Gerade ihre Punkte weiter trägt.
+   solange die gemeinsame Gerade ihre Punkte weiter trägt, und nur, wenn sie
+   wirklich dieselbe Gerade sind (`join-offset`, `join-angle`). Diese beiden
+   Schranken sind der empfindlichste Teil: In einer möblierten Wohnung mit
+   hunderten Umdrehungen findet sich zu jedem Stück irgendein Partner, der
+   zufällig passt – wenn man großzügig genug ist. Dann laufen plötzlich
+   Linien diagonal durch Räume.
 4. Stücke, die fast parallel zur vorherrschenden Richtung liegen, werden
    genau parallel dazu gedreht (`snap-angle`). Diese Richtung wird gemessen,
    nicht angenommen: Es ist die, auf die sich die längsten Wände einigen.
@@ -263,8 +270,8 @@ Fehlt ein Raum, war der Roboter nicht drin. Zwei Läufe lassen sich nicht
 übereinanderlegen, jeder hat seinen eigenen Nullpunkt.
 
 Gerechnet wird beim Laden, im Haupt-Thread. Für die Referenzaufzeichnung sind
-das rund 30 ms, für einen langen Lauf mit `mapInterval 5` – 300 Scans,
-85 000 Punkte – rund 120 ms: Das Gitter wächst mit der Wohnung, nicht mit der
+das rund 15 ms, für einen echten Lauf über eine ganze Wohnung – 595 Scans,
+156 000 Punkte, eine Stunde – rund 60 ms: Das Gitter wächst mit der Wohnung, nicht mit der
 Datenmenge, und für die Linien reichen 120 Umdrehungen, weil die übrigen
 dieselben Wände noch einmal zeigen. Welche Zellen Wand sind, entscheidet
 weiterhin jeder einzelne Strahl. Ein Worker lohnt nicht.

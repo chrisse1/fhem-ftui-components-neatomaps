@@ -18,9 +18,23 @@ import { wallLines, wallTest, mainDirection } from '../www/ftui/components/neato
 
 const here = (name) => fileURLToPath(new URL(name, import.meta.url));
 
-/** A lidar revolution from (x, y): what a robot standing there would see. */
-function look(x, y, world, { blind = () => false } = {}) {
+/**
+ * A lidar revolution from (x, y): what a robot standing there would see.
+ *
+ * With noise it is what a real one sees: the distances of a Neato scatter by
+ * a couple of centimetres, and that scatter is not a detail. It is what turns
+ * a straight wall into pieces at slightly different angles - and those are
+ * what a too generous join glues into lines across the room.
+ */
+function look(x, y, world, { noise = 0, seed = 1 } = {}) {
   const points = [];
+  let random = seed;
+  const jitter = () => {
+    // A small deterministic generator: a test that fails every other run is
+    // worse than no test.
+    random = (random * 1103515245 + 12345) % 2147483648;
+    return (random / 2147483648 - 0.5) * 2 * noise;
+  };
 
   for (let degrees = 0; degrees < 360; degrees += 1) {
     const radians = degrees * Math.PI / 180;
@@ -33,9 +47,6 @@ function look(x, y, world, { blind = () => false } = {}) {
     for (let distance = 0.05; distance < 8; distance += 0.01) {
       const px = x + dx * distance;
       const py = y + dy * distance;
-      if (blind(px, py)) {
-        continue;
-      }
       if (world(px, py)) {
         nearest = distance;
         break;
@@ -43,7 +54,7 @@ function look(x, y, world, { blind = () => false } = {}) {
     }
 
     if (nearest < Infinity) {
-      points.push([degrees, Math.round(nearest * 1000)]);
+      points.push([degrees, Math.round((nearest + (noise ? jitter() : 0)) * 1000)]);
     }
   }
 
@@ -196,6 +207,73 @@ test('nothing is drawn where no beam has been', () => {
       assert.ok(!(x > 2.7 && y > 2.7),
         `a line runs into the corner nobody measured: ${x.toFixed(2)}, ${y.toFixed(2)}`);
     }
+  }
+});
+
+test('two walls a hand apart do not become one', () => {
+  // The join closes gaps along a wall. It may not pull two walls together
+  // that run side by side - the offset between them is what tells them apart,
+  // and a flat has plenty of nearly parallel pairs: wall and skirting board,
+  // wall and cupboard in front of it.
+  const near = (px, py) => (py > 2.98 && py < 3.04 && px > 1 && px < 3)      // wall
+    || (py > 3.28 && py < 3.34 && px > 3.4 && px < 5);                       // and the next one, 30 cm off
+  const scans = [];
+  for (let i = 0; i < 6; i++) {
+    scans.push(look(2.5 + i * 0.2, 1.5, (px, py) => room(px, py) || near(px, py)));
+  }
+
+  const { walls } = build(scans);
+
+  for (const wall of walls) {
+    const runsAlong = Math.abs(wall.y1 - wall.y0) < 0.1 && (wall.y0 > 2.8 && wall.y0 < 3.5);
+    // A segment spanning both pieces would be longer than either of them and
+    // would sit between the two offsets.
+    assert.ok(!(runsAlong && distance(wall) > 2.6),
+      `a ${distance(wall).toFixed(2)} m line was drawn through two walls 30 cm apart`);
+  }
+});
+
+test('many revolutions of a furnished room draw no line across it', () => {
+  // Holds the property that an hour-long run over a whole flat broke: with
+  // hundreds of revolutions of a furnished home the joins used to wander
+  // diagonally through rooms, because they were allowed to be far looser
+  // (ten degrees, sixteen centimetres) than the pieces they joined.
+  //
+  // Be warned that this fixture does NOT reproduce that: a room of six by
+  // four metres with a handful of boxes stays clean even under the old,
+  // loose settings. It took ten by sixteen metres and 595 revolutions. What
+  // this test does is keep the property once it has been established
+  // elsewhere - by measuring against a real recording.
+  const clutter = (px, py) => {
+    const box = (x0, y0, x1, y1) => px > x0 && px < x1 && py > y0 && py < y1
+      && !(px > x0 + 0.04 && px < x1 - 0.04 && py > y0 + 0.04 && py < y1 - 0.04);
+    // Everything in here is square to the room on purpose: then a diagonal
+    // line in the result can only be one the join invented.
+    return box(1.2, 2.6, 2.0, 3.2) || box(4.2, 0.5, 5.4, 1.3) || box(2.6, 1.4, 3.0, 1.8)
+      || box(0.4, 1.9, 0.8, 2.6) || box(3.4, 2.9, 5.2, 3.3) || box(1.0, 0.6, 1.9, 1.0);
+  };
+  const world = (px, py) => room(px, py) || clutter(px, py);
+
+  const scans = [];
+  for (let i = 0; i < 60; i++) {
+    const x = 1 + (i % 9) * 0.5;
+    const y = 1 + Math.floor(i / 9) * 0.35;
+    scans.push(look(x, y, world, { noise: 0.02, seed: i + 1 }));
+  }
+
+  const { walls } = build(scans);
+  const diagonal = walls.filter(wall =>
+    Math.abs(wall.x1 - wall.x0) > 0.6 && Math.abs(wall.y1 - wall.y0) > 0.6);
+
+  assert.deepEqual(diagonal.map(w => `${w.x0.toFixed(1)},${w.y0.toFixed(1)} -> ${w.x1.toFixed(1)},${w.y1.toFixed(1)}`),
+    [], 'lines run diagonally through the room');
+
+  // The room is still a room: its four walls are there, and nothing is longer
+  // than the room itself.
+  const long = walls.filter(wall => distance(wall) > 2);
+  assert.ok(long.length >= 4, `${long.length} long walls instead of at least four`);
+  for (const wall of walls) {
+    assert.ok(distance(wall) < 6.5, `a ${distance(wall).toFixed(2)} m wall in a 6 m room`);
   }
 });
 
