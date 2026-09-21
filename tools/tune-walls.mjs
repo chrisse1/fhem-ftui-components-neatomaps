@@ -97,6 +97,8 @@ const runs = [
   { name: 'ohne Einrasten', options: { snapDegrees: 0 } },
   { name: 'alle Scans', options: { maxScans: 0 } },
   { name: 'ohne Ausrichten', scans: recorded, options: {} },
+  { name: 'ohne Ecken', options: { cornerReach: 0 } },
+  { name: 'ohne Fahrweg-Regel', options: { clearance: -1 } },
 ];
 
 process.stdout.write('                    Segmente   Abdeckung    Laenge     Zeit\n');
@@ -108,7 +110,8 @@ for (const run of runs) {
   const started = performance.now();
   const grid = occupancy(use, cell);
   const cells = classify(grid, 0.25, 2);
-  const { walls, direction } = wallLines(use, grid, wallTest(grid, 0.25, 2), run.options);
+  const { walls, direction } = wallLines(use, grid, wallTest(grid, 0.25, 2),
+    { poses, ...run.options });
   const took = performance.now() - started;
 
   const exact = coverage(walls, grid, cells, 0);

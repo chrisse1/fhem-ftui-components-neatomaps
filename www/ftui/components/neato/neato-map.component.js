@@ -157,6 +157,9 @@ export class FtuiNeatoMap extends FtuiElement {
       joinGap: 0.8,
       joinOffset: 0.12,
       joinAngle: 4,
+      closeCorners: true,
+      cornerReach: 0.8,
+      clearance: 0.1,
       minWall: 0.6,
       snapAngle: 8,
       // how it looks
@@ -271,6 +274,9 @@ export class FtuiNeatoMap extends FtuiElement {
       case 'join-gap':
       case 'join-offset':
       case 'join-angle':
+      case 'close-corners':
+      case 'corner-reach':
+      case 'clearance':
       case 'min-wall':
       case 'snap-angle':
         this.view = null;
@@ -818,6 +824,11 @@ export class FtuiNeatoMap extends FtuiElement {
           gap: Number(this.joinGap),
           joinOffset: Number(this.joinOffset),
           joinDegrees: Number(this.joinAngle),
+          // Where the robot drove there is no wall, and a doorway it drove
+          // through is not a corner to be closed.
+          poses: this.session.poses,
+          cornerReach: this.closeCorners ? Number(this.cornerReach) : 0,
+          clearance: Number(this.clearance),
           minLength: Number(this.minWall),
           snapDegrees: Number(this.snapAngle),
         });

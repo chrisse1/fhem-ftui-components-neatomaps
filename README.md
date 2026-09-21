@@ -110,6 +110,9 @@ Solange `state` auf `cleaning` steht, wird die laufende Aufzeichnung alle
 | `join-offset` | `0.12` | Wie weit zwei Stücke quer zur Richtung auseinanderliegen dürfen, um als dieselbe Wand zu gelten. Zu streng lässt eine Wand als Bündel paralleler Striche stehen, zu großzügig macht aus zwei Wänden eine. |
 | `join-angle` | `4` | Wie viel Grad zwei Stücke sich unterscheiden dürfen. |
 | `min-wall` | `0.6` | Kürzere Stücke werden weggelassen – Stuhlbeine, Kabel, Kistenecken. |
+| `close-corners` | an | Ecken schließen, die der Lidar nie gesehen hat. |
+| `corner-reach` | `0.8` | Wie weit zwei Wandenden dafür höchstens verlängert werden, in Metern. |
+| `clearance` | `0.1` | Halbe Breite des Roboters: Wo seine Spur läuft, wird eine Wandlinie gekappt. Negativ schaltet die Regel ab. |
 | `snap-angle` | `8` | Wie weit ein Stück von der vorherrschenden Richtung abweichen darf, um darauf eingerastet zu werden, in Grad. `0` rastet nichts ein. |
 | `cell` | `0.10` | Zellgröße des Belegungsgitters in Metern. |
 | `threshold` | `0.25` | Ab welchem Anteil Treffer eine Zelle als Wand gilt. |
@@ -247,6 +250,30 @@ Schritten:
    genau parallel dazu gedreht (`snap-angle`). Diese Richtung wird gemessen,
    nicht angenommen: Es ist die, auf die sich die längsten Wände einigen.
    Steht die Dockingstation schräg zur Wohnung, ist es eben eine schräge.
+
+### Wo er gefahren ist, ist keine Wand
+
+Der Roboter ist eine Scheibe von gut 30 cm, kein Gespenst. Eine Linie, die
+seine Fahrspur kreuzt, kann keine Wand sein – er hätte hindurchfahren müssen.
+Solche Linien werden an der Kreuzung gekappt, mitsamt seiner halben Breite
+(`clearance`) zu beiden Seiten; der Rest der Wand bleibt stehen. In der
+geprüften Aufzeichnung waren das sieben Stellen.
+
+Dieselbe Regel entscheidet auch, welche Ecke geschlossen werden darf.
+
+### Geschlossene Ecken
+
+Wo zwei Wände im rechten Winkel zusammenstoßen, sieht der Lidar die Ecke
+selbst meistens nicht: Er blickt an der einen Wand entlang, dann an der
+anderen, und dazwischen bleibt eine Lücke von ein paar Dezimetern. Beide
+Linien werden bis zu ihrem Schnittpunkt verlängert.
+
+**Das ist das einzige Stück Geometrie auf dieser Karte, das nicht gemessen,
+sondern geschlossen wurde** – und nur, wo der Schluss sicher ist: Die Ecke
+muss nah sein (`corner-reach`), der Winkel muss ein Eckwinkel sein, und der
+Roboter darf nicht durch die Stelle gefahren sein, an der die Ecke läge. Eine
+Türöffnung, durch die er gefahren ist, bleibt offen. `close-corners="false"`
+schaltet es ab, dann endet jede Wand dort, wo sie gemessen wurde.
 
 **Was die Vereinfachung nicht tut:** entscheiden, was Wand ist. Das bleibt
 Sache des Belegungsgitters. Eine Linie wird nur gezeichnet, wo das Gitter sie

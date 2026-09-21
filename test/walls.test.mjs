@@ -14,7 +14,9 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { parseSession, occupancy, classify } from '../www/ftui/components/neato/neato-track.js';
-import { wallLines, wallTest, mainDirection } from '../www/ftui/components/neato/neato-walls.js';
+import {
+  wallLines, wallTest, mainDirection, clearOfTrack, closeCorners,
+} from '../www/ftui/components/neato/neato-walls.js';
 
 const here = (name) => fileURLToPath(new URL(name, import.meta.url));
 
@@ -184,9 +186,12 @@ test('a round pillar does not become a straight wall', () => {
   }
 });
 
-test('nothing is drawn where no beam has been', () => {
-  // Two walls of a corner, with the corner itself never measured: the lines
-  // may not meet in it.
+test('nothing is drawn where no beam has been, except a closed corner', () => {
+  // The rule and its one exception. Without corner closing nothing goes
+  // beyond what was measured; with it, a corner is concluded - but only as
+  // far as corner-reach allows, and that is checked below.
+  //
+  // Two walls of a corner, with the corner itself never measured.
   const wallPoints = [];
   for (let t = 1.0; t <= 2.5; t += 0.02) { wallPoints.push([t, 3.0]); }
   for (let t = 1.0; t <= 2.5; t += 0.02) { wallPoints.push([3.0, t]); }
@@ -199,13 +204,30 @@ test('nothing is drawn where no beam has been', () => {
     }).sort((a, b) => a[0] - b[0]),
   });
 
-  const { walls } = build([scan(1.6, 1.6), scan(1.5, 1.5), scan(1.7, 1.7)]);
+  const scans = [scan(1.6, 1.6), scan(1.5, 1.5), scan(1.7, 1.7)];
 
-  for (const wall of walls) {
+  const measured = build(scans, { cornerReach: 0 }).walls;
+  for (const wall of measured) {
     for (const [x, y] of [[wall.x0, wall.y0], [wall.x1, wall.y1]]) {
-      // The corner at (3.0, 3.0) was never seen; no line may reach into it.
+      // The corner at (3.0, 3.0) was never seen; without corner closing no
+      // line may reach into it.
       assert.ok(!(x > 2.7 && y > 2.7),
         `a line runs into the corner nobody measured: ${x.toFixed(2)}, ${y.toFixed(2)}`);
+    }
+  }
+
+  // With corner closing the lines may meet there - and nowhere further. Every
+  // end has to stay within reach of an end that was measured.
+  const reach = 0.8;
+  const closed = build(scans, { cornerReach: reach }).walls;
+  for (const wall of closed) {
+    for (const [x, y] of [[wall.x0, wall.y0], [wall.x1, wall.y1]]) {
+      const nearest = Math.min(...measured.flatMap(m => [
+        Math.hypot(x - m.x0, y - m.y0),
+        Math.hypot(x - m.x1, y - m.y1),
+      ]));
+      assert.ok(nearest <= reach + 0.01,
+        `an end sits ${nearest.toFixed(2)} m from anything measured, reach is ${reach}`);
     }
   }
 });
@@ -275,6 +297,83 @@ test('many revolutions of a furnished room draw no line across it', () => {
   for (const wall of walls) {
     assert.ok(distance(wall) < 6.5, `a ${distance(wall).toFixed(2)} m wall in a 6 m room`);
   }
+});
+
+test('no wall is drawn where the robot drove', () => {
+  // The robot is a disc of some thirty centimetres, not a ghost: a line
+  // across its track cannot be a wall. A stray sighting puts one there.
+  const scans = [look(3, 2, room), look(1.5, 1, room), look(4.5, 3, room)];
+  const poses = [];
+  for (let t = 0.6; t < 5.4; t += 0.15) {
+    poses.push({ x: t, y: 2.0 });                // straight through the room
+  }
+
+  // A wall right across that track, seen once - the kind of line a badly
+  // placed scan leaves behind.
+  const strays = [{
+    x0: 3.0, y0: 0.5, x1: 3.0, y1: 3.5,
+    angle: Math.PI / 2, length: 3.0,
+  }];
+
+  const kept = clearOfTrack(strays, poses, { clearance: 0.1, minLength: 0.3 });
+  const crosses = kept.some(wall => Math.min(wall.y0, wall.y1) < 2.0
+    && Math.max(wall.y0, wall.y1) > 2.0);
+
+  assert.equal(crosses, false, 'a wall still runs across the track');
+  // What is left of it on either side is kept - only the crossing goes.
+  assert.equal(kept.length, 2);
+  assert.ok(kept.every(wall => wall.length > 1.2));
+
+  // And the real walls of the room, which the track never touches, survive.
+  const { walls } = build(scans, { poses });
+  assert.ok(walls.filter(wall => distance(wall) > 2).length >= 4);
+});
+
+test('a corner the lidar never saw is closed', () => {
+  // Two walls of a corner, the corner itself missing - the lidar looks along
+  // one wall, then along the other.
+  const open = [
+    { x0: 1.0, y0: 3.0, x1: 2.6, y1: 3.0, angle: 0, length: 1.6 },
+    { x0: 3.0, y0: 1.0, x1: 3.0, y1: 2.6, angle: Math.PI / 2, length: 1.6 },
+  ];
+
+  const closed = closeCorners(open.map(w => ({ ...w })), [], { cornerReach: 0.8, clearance: 0.1 });
+  const corner = closed.some(wall =>
+    Math.abs(wall.x1 - 3.0) < 0.01 && Math.abs(wall.y1 - 3.0) < 0.01
+    || Math.abs(wall.x0 - 3.0) < 0.01 && Math.abs(wall.y0 - 3.0) < 0.01);
+
+  assert.ok(corner, 'the corner at 3.0, 3.0 was not closed: '
+    + JSON.stringify(closed.map(w => [w.x0.toFixed(2), w.y0.toFixed(2), w.x1.toFixed(2), w.y1.toFixed(2)])));
+});
+
+test('a doorway the robot drove through stays open', () => {
+  // The same shape, but this time the robot drove through the gap. Then it is
+  // not a corner, it is a door, and walling it up would be a lie.
+  const open = [
+    { x0: 1.0, y0: 3.0, x1: 2.6, y1: 3.0, angle: 0, length: 1.6 },
+    { x0: 3.0, y0: 1.0, x1: 3.0, y1: 2.6, angle: Math.PI / 2, length: 1.6 },
+  ];
+  const poses = [];
+  for (let t = 0; t < 1.4; t += 0.1) {
+    poses.push({ x: 2.4 + t * 0.5, y: 2.4 + t * 0.5 });       // out through the gap
+  }
+
+  const closed = closeCorners(open.map(w => ({ ...w })), poses, { cornerReach: 0.8, clearance: 0.1 });
+
+  assert.ok(closed.every(wall => Math.hypot(wall.x1 - 3.0, wall.y1 - 3.0) > 0.05
+    && Math.hypot(wall.x0 - 3.0, wall.y0 - 3.0) > 0.05),
+  'the doorway was walled up');
+});
+
+test('a corner too far away is left open', () => {
+  const far = [
+    { x0: 1.0, y0: 3.0, x1: 2.0, y1: 3.0, angle: 0, length: 1.0 },
+    { x0: 3.0, y0: 1.0, x1: 3.0, y1: 2.0, angle: Math.PI / 2, length: 1.0 },
+  ];
+  const closed = closeCorners(far.map(w => ({ ...w })), [], { cornerReach: 0.5, clearance: 0.1 });
+
+  assert.deepEqual(closed.map(w => w.length.toFixed(2)), ['1.00', '1.00'],
+    'walls were stretched more than a metre to meet');
 });
 
 test('the main direction is measured, not assumed', () => {

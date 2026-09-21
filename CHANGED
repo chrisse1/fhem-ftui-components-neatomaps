@@ -2,6 +2,15 @@
 # Leerzeile an - neue Eintraege gehoeren also nach oben, und zwischen den
 # Bloecken steht genau eine Leerzeile. Eine Leerzeile direkt hier waere das
 # Ende der Anzeige, bevor sie angefangen hat.
+2026-09-21 ftui-neato-map 1.3.0
+ - wo die Fahrspur laeuft, wird keine Wand mehr gezeichnet: der Roboter ist
+   eine Scheibe von 30 cm und faehrt nicht durch Waende. In der geprueften
+   Aufzeichnung verschwinden damit sieben falsche Linien
+ - Ecken, die der Lidar nie gesehen hat, werden geschlossen - aber nur nah
+   (corner-reach 0,8 m), nur im Eckwinkel, und nur wo der Roboter nicht
+   durchgefahren ist. Eine Tuer, durch die er fuhr, bleibt offen
+ - close-corners="false" und clearance="-1" schalten beides ab
+
 2026-09-21 ftui-neato-map 1.2.0
  - die Umdrehungen werden vor dem Zeichnen aufeinandergelegt: jede wird ein
    paar Zentimeter gerueckt, bis ihre Punkte auf die Karte der uebrigen

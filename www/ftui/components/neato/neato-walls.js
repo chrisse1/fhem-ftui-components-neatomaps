@@ -80,6 +80,14 @@ const DEFAULTS = {
   // sightings really do form two heaps, two lines come out - the gathering
   // follows where they are dense, it does not average everything in reach.
   flight: 0.12,
+  // Two wall ends this close, meeting at something like a right angle, are a
+  // corner the robot never drove into: both are extended to where their lines
+  // cross. 0 leaves every wall ending where it was measured.
+  cornerReach: 0.80,
+  // How far the robot's middle stays from a wall: it is a disc of some 33 cm,
+  // so where its track runs there is no wall, and a line crossing the track
+  // is cut there. Its own width, less what the position may be off by.
+  clearance: 0.10,
   // At most this many revolutions are taken apart into lines. A long run has
   // three hundred of them and sees every wall a dozen times over; the
   // geometry does not get better from the rest, only slower. Which cells are
@@ -95,6 +103,7 @@ const DEFAULTS = {
  */
 export function wallLines(scans, grid, cells, options = {}) {
   const settings = { ...DEFAULTS, ...options };
+  const poses = options.poses || [];
 
   let pieces = [];
   for (const scan of sample(scans, settings.maxScans)) {
@@ -116,10 +125,244 @@ export function wallLines(scans, grid, cells, options = {}) {
 
   walls = walls
     .map(wall => supported(wall, grid, cells, settings))
-    .filter(wall => wall && wall.length >= settings.minLength)
-    .sort((a, b) => b.length - a.length);
+    .filter(wall => wall && wall.length >= settings.minLength);
 
+  // Where the robot drove there is no wall - it is a disc of thirty
+  // centimetres, not a ghost. Cutting the lines on its track comes before
+  // closing corners, so that a doorway it drove through is not walled up.
+  walls = clearOfTrack(walls, poses, settings);
+  walls = closeCorners(walls, poses, settings);
+
+  walls.sort((a, b) => b.length - a.length);
   return { walls, direction };
+}
+
+/**
+ * Cuts the lines where the robot drove.
+ *
+ * A wall that crosses the track cannot be one: the robot would have had to
+ * pass through it. Usually the crossing is a stray line, and the rest of the
+ * wall it belongs to is real, so the line is cut at the crossing rather than
+ * thrown away - with the robot's own half width taken out on either side,
+ * because its middle never gets closer to a wall than that.
+ */
+export function clearOfTrack(walls, poses, settings) {
+  if (!poses || poses.length < 2 || !(settings.clearance >= 0)) {
+    return walls;
+  }
+
+  const out = [];
+
+  for (const wall of walls) {
+    const dx = wall.x1 - wall.x0;
+    const dy = wall.y1 - wall.y0;
+    const length = Math.hypot(dx, dy);
+    if (!(length > 0)) {
+      continue;
+    }
+
+    // Where along the wall the track crosses it, as a fraction of its length.
+    const cuts = [];
+    for (let i = 1; i < poses.length; i++) {
+      const hit = crossing(wall.x0, wall.y0, wall.x1, wall.y1,
+        poses[i - 1].x, poses[i - 1].y, poses[i].x, poses[i].y);
+      if (hit !== null) {
+        cuts.push(hit * length);
+      }
+    }
+
+    if (!cuts.length) {
+      out.push(wall);
+      continue;
+    }
+
+    // Everything within the robot's half width of a crossing goes.
+    cuts.sort((a, b) => a - b);
+    const keep = [];
+    let from = 0;
+    for (const at of cuts) {
+      const to = at - settings.clearance;
+      if (to - from >= settings.minLength) {
+        keep.push([from, to]);
+      }
+      from = Math.max(from, at + settings.clearance);
+    }
+    if (length - from >= settings.minLength) {
+      keep.push([from, length]);
+    }
+
+    const ux = dx / length;
+    const uy = dy / length;
+    for (const [a, b] of keep) {
+      out.push({
+        ...wall,
+        x0: wall.x0 + ux * a,
+        y0: wall.y0 + uy * a,
+        x1: wall.x0 + ux * b,
+        y1: wall.y0 + uy * b,
+        length: b - a,
+      });
+    }
+  }
+
+  return out;
+}
+
+/** Where two segments cross, as a fraction along the first, or null. */
+function crossing(ax0, ay0, ax1, ay1, bx0, by0, bx1, by1) {
+  const ax = ax1 - ax0;
+  const ay = ay1 - ay0;
+  const bx = bx1 - bx0;
+  const by = by1 - by0;
+  const denominator = ax * by - ay * bx;
+
+  if (Math.abs(denominator) < 1e-12) {
+    return null;                                 // parallel
+  }
+
+  const t = ((bx0 - ax0) * by - (by0 - ay0) * bx) / denominator;
+  const u = ((bx0 - ax0) * ay - (by0 - ay0) * ax) / denominator;
+
+  return (t >= 0 && t <= 1 && u >= 0 && u <= 1) ? t : null;
+}
+
+/**
+ * Closes the corners two walls almost make.
+ *
+ * Where two walls meet at a right angle, the lidar rarely sees the corner
+ * itself: it looks along one wall, then along the other, and what is left is
+ * a gap of a few decimetres. Both lines are extended to where they cross -
+ * the one piece of geometry on this map that was not measured but concluded,
+ * and only where the conclusion is safe: the corner has to be near, the
+ * angle has to be a corner's, and the robot must not have driven through the
+ * place where the corner would be. A doorway it drove through stays open.
+ */
+export function closeCorners(walls, poses, settings) {
+  if (!(settings.cornerReach > 0) || walls.length < 2) {
+    return walls;
+  }
+
+  const ends = walls.map(wall => ({ wall, moved: [false, false] }));
+
+  for (let i = 0; i < ends.length; i++) {
+    for (let k = i + 1; k < ends.length; k++) {
+      const a = ends[i];
+      const b = ends[k];
+
+      let delta = Math.abs(a.wall.angle - b.wall.angle) % Math.PI;
+      delta = Math.min(delta, Math.PI - delta);
+      // A corner, not a continuation and not a fold.
+      if (delta < Math.PI / 4 || delta > Math.PI / 2 + 1e-9) {
+        continue;
+      }
+
+      const point = meeting(a.wall, b.wall);
+      if (!point) {
+        continue;
+      }
+
+      const forA = nearestEnd(a.wall, point);
+      const forB = nearestEnd(b.wall, point);
+      if (forA.distance > settings.cornerReach || forB.distance > settings.cornerReach) {
+        continue;
+      }
+      // Only outwards: a corner is where the walls end, not a point in the
+      // middle of one of them.
+      if (forA.inside || forB.inside) {
+        continue;
+      }
+      if (a.moved[forA.which] || b.moved[forB.which]) {
+        continue;
+      }
+      if (drivenThrough(point, poses, settings)) {
+        continue;
+      }
+      if (reaches(a.wall, forA, point, poses, settings)
+        && reaches(b.wall, forB, point, poses, settings)) {
+        stretch(a.wall, forA.which, point);
+        stretch(b.wall, forB.which, point);
+        a.moved[forA.which] = true;
+        b.moved[forB.which] = true;
+      }
+    }
+  }
+
+  return walls.map(wall => ({
+    ...wall,
+    length: Math.hypot(wall.x1 - wall.x0, wall.y1 - wall.y0),
+  }));
+}
+
+/** Where the lines of two walls cross, endlessly extended. */
+function meeting(a, b) {
+  const ax = Math.cos(a.angle);
+  const ay = Math.sin(a.angle);
+  const bx = Math.cos(b.angle);
+  const by = Math.sin(b.angle);
+  const denominator = ax * by - ay * bx;
+
+  if (Math.abs(denominator) < 1e-9) {
+    return null;
+  }
+
+  const t = ((b.x0 - a.x0) * by - (b.y0 - a.y0) * bx) / denominator;
+  return { x: a.x0 + ax * t, y: a.y0 + ay * t };
+}
+
+/** Which end of a wall is nearer the corner, and whether it lies inside it. */
+function nearestEnd(wall, point) {
+  const d0 = Math.hypot(point.x - wall.x0, point.y - wall.y0);
+  const d1 = Math.hypot(point.x - wall.x1, point.y - wall.y1);
+  const which = d0 <= d1 ? 0 : 1;
+  const ux = Math.cos(wall.angle);
+  const uy = Math.sin(wall.angle);
+  const at = (point.x - wall.x0) * ux + (point.y - wall.y0) * uy;
+
+  return {
+    which,
+    distance: Math.min(d0, d1),
+    // Between the two ends: extending would shorten the wall, not lengthen it.
+    inside: at > 0.05 && at < wall.length - 0.05,
+  };
+}
+
+/** Is the stretch from the wall's end to the corner free of the track? */
+function reaches(wall, end, point, poses, settings) {
+  const x = end.which === 0 ? wall.x0 : wall.x1;
+  const y = end.which === 0 ? wall.y0 : wall.y1;
+
+  for (let i = 1; i < (poses || []).length; i++) {
+    if (crossing(x, y, point.x, point.y,
+      poses[i - 1].x, poses[i - 1].y, poses[i].x, poses[i].y) !== null) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/** Did the robot drive through the place the corner would be? */
+function drivenThrough(point, poses, settings) {
+  const reach = settings.clearance;
+
+  for (const pose of poses || []) {
+    if (Math.abs(pose.x - point.x) < reach && Math.abs(pose.y - point.y) < reach) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/** Moves one end of a wall to the corner. */
+function stretch(wall, which, point) {
+  if (which === 0) {
+    wall.x0 = point.x;
+    wall.y0 = point.y;
+  } else {
+    wall.x1 = point.x;
+    wall.y1 = point.y;
+  }
 }
 
 /**
