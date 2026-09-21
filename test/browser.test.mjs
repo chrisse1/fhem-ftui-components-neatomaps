@@ -169,6 +169,7 @@ function probe(page, id) {
       note: root.querySelector('.note').textContent,
       walls: svg ? svg.querySelectorAll('g.wall rect').length : 0,
       wallLines: svg ? svg.querySelectorAll('g.walls line').length : 0,
+      dots: svg ? svg.querySelectorAll('g.dots rect').length : 0,
       free: svg ? svg.querySelectorAll('g.free rect').length : 0,
       points: svg ? svg.querySelectorAll('g.points rect').length : 0,
       missed: svg ? svg.querySelectorAll('g.missed rect').length : 0,
@@ -229,10 +230,10 @@ test('the map fills its grid tile and draws the run', { skip: missing.join(', ')
     assert.ok(listed.svgBox.width > listed.box.width - 2);
     assert.ok(listed.svgBox.height <= listed.box.height + 1);
 
-    // Walls as lines, which is what the default does.
-    assert.ok(listed.wallLines > 5, `wall segments: ${listed.wallLines}`);
-    assert.ok(listed.wallLines < 80, `${listed.wallLines} segments is not a simplification`);
-    assert.equal(listed.walls, 0, 'cells were drawn although lines were asked for');
+    // One square per measured cell, which is what the default does.
+    assert.ok(listed.dots > 100, `dots: ${listed.dots}`);
+    assert.equal(listed.wallLines, 0, 'lines were drawn although dots are the default');
+    assert.equal(listed.walls, 0, 'filled cells were drawn although dots are the default');
     assert.ok(listed.free > 50, `free rectangles: ${listed.free}`);
     assert.equal(listed.track, 1);
     assert.equal(listed.note, '');
@@ -552,6 +553,7 @@ test('a device without recordings says so instead of staying empty',
       assert.ok(bound.note.length > 0, 'no message');
       assert.equal(bound.walls, 0);
       assert.equal(bound.wallLines, 0);
+      assert.equal(bound.dots, 0);
     } finally {
       await context.close();
     }
@@ -580,7 +582,7 @@ test('in a popup the map fills the window and the sizes are settable',
         `the map ends at ${popup.bottom}, the window at ${popup.parentBottom}`);
       assert.ok(popup.svgBox.width > popup.box.width - 2);
       assert.ok(popup.svgBox.height <= popup.box.height + 1);
-      assert.ok(popup.wallLines > 5, `wall segments: ${popup.wallLines}`);
+      assert.ok(popup.dots > 100, `dots: ${popup.dots}`);
 
       // text-size="1.4" and arrow-size="3" against the defaults of the tile.
       assert.ok(popup.fontSize > tile.fontSize * 1.5,
@@ -616,8 +618,9 @@ test('the colours of the map can be set from the markup',
         const map = document.querySelector('#map-listed');
         const root = map.shadowRoot;
         const read = () => ({
-          // Walls are lines by default, so their colour is a stroke.
-          wall: getComputedStyle(root.querySelector('g.walls line')).stroke,
+          // Walls are dots by default, so their colour is a fill. The same
+          // custom property feeds the stroke of walls="lines".
+          wall: getComputedStyle(root.querySelector('g.dots rect')).fill,
           track: getComputedStyle(root.querySelector('polyline.track')).stroke,
           free: getComputedStyle(root.querySelector('g.free')).opacity,
           text: getComputedStyle(map).color,
@@ -703,11 +706,15 @@ test('walls="cells" draws the evidence itself',
 
     try {
       const celled = await probe(context.page, 'map-celled');
-      const lined = await probe(context.page, 'map-listed');
+      // map-bound asks for lines; the default is dots.
+      const lined = await probe(context.page, 'map-bound');
 
       assert.ok(celled.walls > 50, `wall rectangles: ${celled.walls}`);
       assert.equal(celled.wallLines, 0);
+      assert.equal(celled.dots, 0);
       // The same recording, and the simplification is the simpler picture.
+      assert.ok(lined.wallLines > 5 && lined.wallLines < 80,
+        `${lined.wallLines} segments is not a simplification`);
       assert.ok(lined.wallLines < celled.walls / 3,
         `${lined.wallLines} segments against ${celled.walls} rectangles`);
       await context.shot('cells-vs-lines.png');
@@ -779,6 +786,7 @@ test('the raw endpoints can be drawn instead of the grid',
       assert.ok(points.points > 1000, `points drawn: ${points.points}`);
       assert.equal(points.walls, 0);
       assert.equal(points.wallLines, 0);
+      assert.equal(points.dots, 0);
       assert.equal(points.free, 0);
       assert.equal(points.track, 1);
       // show-info="false" hides the line, the map keeps the whole tile.

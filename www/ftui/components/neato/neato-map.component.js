@@ -164,10 +164,10 @@ export class FtuiNeatoMap extends FtuiElement {
       threshold: 0.25,
       minSeen: 2,
       pad: 0.4,
-      // How the walls are drawn. 'lines' makes the straight pieces they are,
-      // 'dots' one square per measured cell, 'cells' the same cells as one
-      // filled area.
-      walls: 'lines',
+      // How the walls are drawn. 'dots' sets one square per measured cell,
+      // 'lines' makes the straight pieces they are, 'cells' the same cells as
+      // one filled area.
+      walls: 'dots',
       // Side of a dot, as a share of the cell. Below 1 a gap stays between
       // neighbours, and that gap is what makes a wall read as measured.
       dotSize: 0.72,
