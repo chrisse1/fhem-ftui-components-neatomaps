@@ -164,9 +164,13 @@ export class FtuiNeatoMap extends FtuiElement {
       threshold: 0.25,
       minSeen: 2,
       pad: 0.4,
-      // 'lines' draws the walls as the straight pieces they are, 'cells' as
-      // the grid cells the evidence marks.
+      // How the walls are drawn. 'lines' makes the straight pieces they are,
+      // 'dots' one square per measured cell, 'cells' the same cells as one
+      // filled area.
       walls: 'lines',
+      // Side of a dot, as a share of the cell. Below 1 a gap stays between
+      // neighbours, and that gap is what makes a wall read as measured.
+      dotSize: 0.72,
       // Lay the revolutions on top of each other before drawing. Costs a
       // moment on a long run and is what makes a wall one line.
       align: true,
@@ -327,6 +331,7 @@ export class FtuiNeatoMap extends FtuiElement {
         this.requestUpdate({});
         break;
       case 'rotate':
+      case 'dot-size':
       case 'pad':
       case 'show-track':
       case 'show-points':
@@ -778,6 +783,9 @@ export class FtuiNeatoMap extends FtuiElement {
 
     if (this.showPoints) {
       parts.push(this.pointsPath(view, sx, sy, Math.max(width, height)));
+    } else if (this.walls === 'dots') {
+      parts.push(`<g class="free">${this.cellRects(view.cells.free, view, sx, sy)}</g>`);
+      parts.push(`<g class="dots">${this.cellDots(view.cells.walls, view, sx, sy)}</g>`);
     } else if (view.lines) {
       parts.push(`<g class="free">${this.cellRects(view.cells.free, view, sx, sy)}</g>`);
       const out = ['<g class="walls">'];
@@ -833,6 +841,33 @@ export class FtuiNeatoMap extends FtuiElement {
 
     parts.push('</g></svg>');
     return parts.join('');
+  }
+
+  /**
+   * Row runs as one square per cell, in metres.
+   *
+   * The same cells cellRects draws, but each on its own and a little smaller
+   * than its cell, so a hairline of background stays between neighbours. That
+   * gap is the whole point: a wall reads as a row of dots rather than as a
+   * blob, and what the lidar saw stays visible as what it is - single
+   * measurements, not a drawing.
+   */
+  cellDots(runs, view, sx, sy) {
+    const cell = view.grid.cell;
+    const size = cell * (Number(this.dotSize) > 0 ? Number(this.dotSize) : 0.72);
+    const inset = (cell - size) / 2;
+    const out = [];
+
+    for (const [ix, iy, run] of runs) {
+      for (let i = 0; i < run; i++) {
+        const x = (ix + i + view.grid.x0) * cell + inset;
+        const y = (iy + view.grid.y0) * cell + inset;
+        out.push(`<rect x="${sx(x)}" y="${sy(y + size)}"`
+          + ` width="${size.toFixed(3)}" height="${size.toFixed(3)}"/>`);
+      }
+    }
+
+    return out.join('');
   }
 
   /** Row runs as rectangles, in metres. */

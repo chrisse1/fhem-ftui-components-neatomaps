@@ -74,6 +74,10 @@
 .free { fill: var(--map-free); opacity: var(--neato-map-free-opacity, 0.16); }
 .wall { fill: var(--map-wall); }
 
+/* One square per measured cell, with a hairline of background between them.
+   Walls the lidar really saw, drawn as what they are. */
+.dots { fill: var(--neato-map-dot-color, var(--map-wall)); }
+
 /* Walls drawn as lines. The stroke does not scale with the map, so a wall is
    as thick in a small tile as in a large one. */
 .walls line {

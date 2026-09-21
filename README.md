@@ -103,7 +103,8 @@ Solange `state` auf `cleaning` steht, wird die laufende Aufzeichnung alle
 | `files` | – | Feste Liste von Dateinamen, durch Komma getrennt. Dann wird FHEM nicht nach der Liste gefragt. |
 | `list-command` | – | Eigenes FHEM-Kommando für die Liste, falls das eingebaute nicht passt. |
 | `refresh-interval` | `30` | Sekunden zwischen zwei Leseversuchen während eines Laufs, `0` schaltet das ab. |
-| `walls` | `lines` | Wie die Wände gezeichnet werden: `lines` zieht gerade Linien daraus, `cells` zeigt die Gitterzellen der rohen Evidenz. |
+| `walls` | `lines` | Wie die Wände gezeichnet werden: `lines` zieht gerade Linien daraus, `dots` setzt ein Quadrat je gemessener Zelle, `cells` füllt dieselben Zellen zu einer Fläche. |
+| `dot-size` | `0.72` | Kantenlänge eines Punkts als Anteil der Zelle. Unter 1 bleibt eine Lücke zwischen Nachbarn – die macht den Unterschied zwischen einem Raster und einem Klotz. |
 | `align` | an | Die Umdrehungen vor dem Zeichnen aufeinanderlegen. Kostet bei einem Stundenlauf rund 0,4 s und ist der Grund, warum eine Wand eine Linie ist. |
 | `line-tolerance` | `0.04` | Wie weit ein Messpunkt von seiner Linie abweichen darf, in Metern. Größer heißt glatter und ungenauer. |
 | `join-gap` | `0.8` | Bis zu welcher Lücke zwei Stücke derselben Flucht zu einer Wand verbunden werden. `0` verbindet nichts. |
@@ -135,6 +136,7 @@ Solange `state` auf `cleaning` steht, wird die laufende Aufzeichnung alle
 | `free-opacity` | `0.16` | Wie deutlich die Fläche gegen den Untergrund steht. |
 | `track-color` | `warning` | Farbe der gefahrenen Spur. |
 | `point-color` | `info` | Farbe der Endpunkte bei `show-points`. |
+| `dot-color` | wie `wall-color` | Farbe der Punkte bei `walls="dots"`, falls sie sich von den Wandlinien unterscheiden soll. |
 | `start-color` | `success` | Punkt am Anfang des Laufs. |
 | `end-color` | `danger` | Punkt am Ende – und der Punkt für den Roboter, solange er fährt. |
 | `missed-color` | `danger` | Farbe der Schraffur über dem ausgelassenen Boden. |
@@ -207,6 +209,28 @@ Zwei Auswege:
   Kommando nötig.
 * `list-command="get myList sessions"` – ein eigenes Kommando, dessen Ausgabe
   Dateinamen sind, durch Zeilenumbruch oder Komma getrennt.
+
+## Drei Arten, dieselben Wände zu zeigen
+
+```html
+<ftui-neato-map walls="lines"></ftui-neato-map>   <!-- Standard -->
+<ftui-neato-map walls="dots"></ftui-neato-map>
+<ftui-neato-map walls="cells"></ftui-neato-map>
+```
+
+`lines` ist die aufgeräumteste: gerade Wände, rechte Winkel, geschlossene
+Ecken, und was einmal durch den Scan lief, fällt heraus. Was sie nicht zeigt,
+ist, wie sicher sie sich ist – eine Linie sieht immer gleich entschlossen aus.
+
+`dots` zeichnet jede gemessene Zelle als eigenes Quadrat, ein wenig kleiner als
+die Zelle, sodass zwischen Nachbarn ein Haar Untergrund bleibt. Genau diese
+Lücke macht den Unterschied: Eine Wand liest sich als Reihe von Messungen, ein
+unsicherer Bereich franst sichtbar aus, statt so auszusehen wie ein sicherer.
+Bei einem dichten Lauf ist das die ehrlichste und – Geschmackssache – oft die
+schönste Ansicht.
+
+`cells` füllt dieselben Zellen zu einer Fläche. Das ist dieselbe Information
+wie `dots`, sieht aber klobig aus; es ist vor allem zum Nachsehen da.
 
 ## Warum eine Wand eine Linie ist
 

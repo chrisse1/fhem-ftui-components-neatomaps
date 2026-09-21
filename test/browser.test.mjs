@@ -716,6 +716,60 @@ test('walls="cells" draws the evidence itself',
     }
   });
 
+test('walls="dots" draws one square per measured cell', { skip: missing.join(', ') || false }, async () => {
+  const context = await open();
+
+  try {
+    const seen = await context.page.evaluate(async () => {
+      const map = document.querySelector('#map-celled');
+      const read = () => {
+        const svg = map.shadowRoot.querySelector('.stage svg');
+        const dot = svg.querySelector('g.dots rect');
+        return {
+          dots: svg.querySelectorAll('g.dots rect').length,
+          cells: svg.querySelectorAll('g.wall rect').length,
+          lines: svg.querySelectorAll('g.walls line').length,
+          side: dot ? Number(dot.getAttribute('width')) : 0,
+        };
+      };
+
+      map.setAttribute('walls', 'cells');
+      await new Promise(done => setTimeout(done, 400));
+      const cells = read();
+
+      map.setAttribute('walls', 'dots');
+      await new Promise(done => setTimeout(done, 400));
+      const dots = read();
+
+      map.setAttribute('dot-size', '0.4');
+      await new Promise(done => setTimeout(done, 400));
+      const small = read();
+
+      return { cells, dots, small, cell: Number(map.cell) };
+    });
+
+    assert.ok(seen.cells.cells > 0 && seen.cells.dots === 0, 'walls="cells" drew dots');
+    assert.ok(seen.dots.dots > 0, 'walls="dots" drew nothing');
+    assert.equal(seen.dots.cells, 0, 'walls="dots" also drew the filled cells');
+    assert.equal(seen.dots.lines, 0, 'walls="dots" also drew the lines');
+
+    // One square per cell, not per run: dots cannot be fewer than the
+    // rectangles the runs of the same cells make.
+    assert.ok(seen.dots.dots >= seen.cells.cells,
+      `${seen.dots.dots} dots against ${seen.cells.cells} runs`);
+
+    // Smaller than its cell, so a gap stays between two neighbours - that gap
+    // is what makes the wall read as measured instead of as a block.
+    assert.ok(seen.dots.side > 0 && seen.dots.side < seen.cell,
+      `a dot of ${seen.dots.side} m in a cell of ${seen.cell} m`);
+    assert.ok(Math.abs(seen.small.side - seen.cell * 0.4) < 1e-6,
+      `dot-size="0.4" gave ${seen.small.side} m`);
+    assert.equal(seen.small.dots, seen.dots.dots, 'the size changed the count');
+  } finally {
+    await context.close();
+  }
+});
+
 test('the raw endpoints can be drawn instead of the grid',
   { skip: missing.join(', ') || false }, async () => {
     const context = await open();

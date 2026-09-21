@@ -2,6 +2,13 @@
 # Leerzeile an - neue Eintraege gehoeren also nach oben, und zwischen den
 # Bloecken steht genau eine Leerzeile. Eine Leerzeile direkt hier waere das
 # Ende der Anzeige, bevor sie angefangen hat.
+2026-09-21 ftui-neato-map 1.6.0
+ - walls="dots" zeichnet jede gemessene Zelle als eigenes Quadrat, etwas
+   kleiner als die Zelle. Die Luecke dazwischen laesst eine Wand als Reihe
+   von Messungen lesen statt als Klotz, und ein unsicherer Bereich franst
+   sichtbar aus, statt sicher auszusehen
+ - dot-size stellt die Kantenlaenge ein, dot-color die Farbe
+
 2026-09-21 ftui-neato-map 1.5.0
  - show-missed schraffiert den Boden, ueber den die Buerste nie gefahren ist,
    und schreibt die Abdeckung in die Zeile darunter. An zwei echten Laeufen
