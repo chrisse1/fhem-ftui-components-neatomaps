@@ -997,6 +997,84 @@ test('a run that did not fit is said out loud, not just left out',
     }
   });
 
+test('one tile can switch between the plan and the runs',
+  { skip: missing.join(', ') || false }, async () => {
+    const context = await open();
+
+    try {
+      const seen = await context.page.evaluate(async () => {
+        const map = document.querySelector('#map-switch');
+        const root = map.shadowRoot;
+        const press = async () => {
+          root.querySelector('.toggle').click();
+          await new Promise(done => setTimeout(done, 500));
+        };
+        const read = () => ({
+          view: map.view,
+          title: root.querySelector('.title').textContent,
+          plan: root.querySelectorAll('.stage svg g.plan-sure rect').length,
+          run: root.querySelectorAll('.stage svg g.dots rect').length,
+          track: root.querySelectorAll('.stage svg polyline.track').length,
+          hint: root.querySelector('.toggle').title,
+          older: root.querySelector('.older').disabled,
+        });
+
+        const events = [];
+        map.addEventListener('viewChange', event => events.push(event.detail));
+
+        const runs = read();
+        await press();
+        const plan = read();
+        await press();
+        const back = read();
+        return { runs, plan, back, events };
+      });
+
+      // Runs first, because that is what view="" means.
+      assert.equal(seen.runs.view, '');
+      assert.ok(seen.runs.run > 100, `${seen.runs.run} cells of the run`);
+      assert.equal(seen.runs.track, 1);
+      assert.equal(seen.runs.plan, 0);
+
+      assert.equal(seen.plan.view, 'plan');
+      assert.equal(seen.plan.title, 'Grundriss');
+      assert.ok(seen.plan.plan > 100, `${seen.plan.plan} cells of the plan`);
+      assert.equal(seen.plan.run, 0);
+      assert.equal(seen.plan.track, 0, 'a plan has no track');
+      assert.equal(seen.plan.older, true, 'a plan has no pages to turn');
+
+      // And back, to the same run it started on.
+      assert.equal(seen.back.view, 'run');
+      assert.equal(seen.back.run, seen.runs.run);
+      assert.equal(seen.back.plan, 0);
+
+      // The hint names where the press leads, not where it is.
+      assert.notEqual(seen.runs.hint, seen.plan.hint);
+
+      // And the change goes out, so an output binding can follow it.
+      assert.deepEqual(seen.events, ['plan', 'run']);
+    } finally {
+      await context.close();
+    }
+  });
+
+test('without show-toggle there is no switch', { skip: missing.join(', ') || false }, async () => {
+  const context = await open();
+
+  try {
+    const hidden = await context.page.evaluate(() => {
+      const maps = ['map-listed', 'map-plan', 'map-bound'];
+      return maps.map(id => {
+        const button = document.querySelector('#' + id).shadowRoot.querySelector('.toggle');
+        return getComputedStyle(button).display;
+      });
+    });
+    assert.deepEqual(hidden, ['none', 'none', 'none']);
+  } finally {
+    await context.close();
+  }
+});
+
 test('the raw endpoints can be drawn instead of the grid',
   { skip: missing.join(', ') || false }, async () => {
     const context = await open();

@@ -67,6 +67,8 @@ const TEXTS = {
     covered: 'Abdeckung %s %',
     still: '%s s gestanden',
     plan: 'Grundriss',
+    showPlan: 'Grundriss zeigen',
+    showRuns: 'Läufe zeigen',
     building: 'Grundriss wird gerechnet …',
     runs: '%s Läufe',
     ofRuns: '%s von %t Läufen',
@@ -89,6 +91,8 @@ const TEXTS = {
     covered: '%s % covered',
     still: 'stood still for %s s',
     plan: 'Floor plan',
+    showPlan: 'Show the floor plan',
+    showRuns: 'Show the runs',
     building: 'Building the floor plan …',
     runs: '%s runs',
     ofRuns: '%s of %t runs',
@@ -135,6 +139,9 @@ export class FtuiNeatoMap extends FtuiElement {
     this.subElement = this.shadowRoot.querySelector('.sub');
     this.olderButton = this.shadowRoot.querySelector('.older');
     this.newerButton = this.shadowRoot.querySelector('.newer');
+    this.barElement = this.shadowRoot.querySelector('.bar');
+    this.toggleButton = this.shadowRoot.querySelector('.toggle');
+    this.toggleButton.addEventListener('click', () => this.flip());
 
     // With rotate="auto" the tile's shape decides how the map is turned, so a
     // tile that changes shape needs the drawing built again. The data behind
@@ -224,6 +231,8 @@ export class FtuiNeatoMap extends FtuiElement {
       // Cells one run calls a wall while the others saw floor: furniture,
       // people, a door that was open the other time.
       showDisputed: true,
+      // A button in the bar that switches between the plan and the runs.
+      showToggle: false,
       // What the brush never went over, hatched, plus the share it did cover
       // in the line below. Off by default: it is an interpretation of the
       // track, not a measurement, and on a thinned recording it says nothing.
@@ -273,6 +282,15 @@ export class FtuiNeatoMap extends FtuiElement {
       <div class="note"></div>
     </div>
     <div class="bar">
+      <button class="toggle" type="button">
+        <svg class="to-plan" viewBox="0 0 24 24">
+          <rect x="4" y="4" width="7" height="7"/><rect x="13" y="4" width="7" height="7"/>
+          <rect x="4" y="13" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/>
+        </svg>
+        <svg class="to-runs" viewBox="0 0 24 24">
+          <path d="M4 18c3 0 3-12 6-12s3 12 6 12 4-6 4-6"/>
+        </svg>
+      </button>
       <button class="older" type="button">
         <svg viewBox="0 0 24 24"><polyline points="15,5 8,12 15,19"/></svg>
       </button>
@@ -349,6 +367,10 @@ export class FtuiNeatoMap extends FtuiElement {
         this.requestUpdate({});
         break;
       case 'view':
+        // Not this.plan = null: the plan is the same whether it is on show or
+        // not, and it costs seconds to build.
+        this.requestUpdate({ list: true });
+        break;
       case 'plan-file':
       case 'plan-runs':
         this.plan = null;
@@ -382,6 +404,7 @@ export class FtuiNeatoMap extends FtuiElement {
       case 'show-points':
       case 'show-info':
       case 'show-controls':
+      case 'show-toggle':
       case 'show-stuck':
       case 'stuck-seconds':
         this.requestUpdate({});
@@ -800,10 +823,25 @@ export class FtuiNeatoMap extends FtuiElement {
   // ------------------------------------------------------------------ paging
 
   step(direction) {
+    if (this.isPlan) {
+      return;                                  // a plan has no pages to turn
+    }
     const next = Math.min(Math.max(this.index + direction, 0), Math.max(this.sessions.length - 1, 0));
     if (next !== this.index) {
       this.submitChange('index', next);
     }
+  }
+
+  /**
+   * Between the floor plan and the runs it is made of.
+   *
+   * submitChange rather than a plain assignment, so the new view goes out as
+   * a change event and an output binding - (view)="Dummy:state" - follows it.
+   * What is loaded stays loaded: the plan does not depend on which of the two
+   * is on show, and recomputing it on every press would cost seconds.
+   */
+  flip() {
+    this.submitChange('view', this.isPlan ? 'run' : 'plan');
   }
 
   onPointerDown(event) {
@@ -912,6 +950,7 @@ export class FtuiNeatoMap extends FtuiElement {
     const parsed = track.parseFileName(this.loadedName);
     const info = this.session ? track.stats(this.session) : null;
     const texts = this.texts;
+    this.renderToggle();
     const locale = this.locale || document.documentElement.lang || undefined;
 
     // index 0 is the newest run, so the arrow to the right runs out first.
@@ -945,6 +984,7 @@ export class FtuiNeatoMap extends FtuiElement {
 
   renderPlanBar() {
     const texts = this.texts;
+    this.renderToggle();
     this.newerButton.disabled = true;
     this.olderButton.disabled = true;
     this.titleElement.textContent = texts.plan;
@@ -978,6 +1018,20 @@ export class FtuiNeatoMap extends FtuiElement {
       ? `${texts.didNotFit}: ${dropped.map(entry =>
         `${entry.file || '?'} (${entry.score.toFixed(2)})`).join(', ')}`
       : '';
+  }
+
+  /** The switch between the two views - hidden unless it was asked for. */
+  renderToggle() {
+    const wanted = this.showToggle;
+    this.toggleButton.style.display = wanted ? '' : 'none';
+    // The stylesheet hides the whole bar when neither the line nor the arrows
+    // are wanted. With a switch in it there is still something to show.
+    this.barElement.style.display = wanted ? 'flex' : '';
+    if (!wanted) {
+      return;
+    }
+    this.toggleButton.title = this.isPlan ? this.texts.showRuns : this.texts.showPlan;
+    this.toggleButton.classList.toggle('planned', this.isPlan);
   }
 
   /** Whether enough of the runs that looked call this cell a wall. */

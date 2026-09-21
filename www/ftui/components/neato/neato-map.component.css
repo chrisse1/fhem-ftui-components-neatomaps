@@ -238,6 +238,14 @@ button svg {
   stroke-linejoin: round;
 }
 
-:host([show-controls='false']) .bar button { display: none; }
+/* The switch between plan and runs shows one of its two icons - whichever the
+   press would lead to. */
+.toggle .to-runs { display: none; }
+.toggle.planned .to-plan { display: none; }
+.toggle.planned .to-runs { display: block; }
+.toggle svg rect { fill: none; stroke: currentColor; }
+
+:host([show-controls='false']) .bar .older,
+:host([show-controls='false']) .bar .newer { display: none; }
 :host([show-info='false']) .info { display: none; }
 :host([show-info='false'][show-controls='false']) .bar { display: none; }

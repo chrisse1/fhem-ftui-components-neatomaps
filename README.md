@@ -92,7 +92,8 @@ Solange `state` auf `cleaning` steht, wird die laufende Aufzeichnung alle
 
 | Attribut | Standard | Bedeutung |
 |---|---|---|
-| `view` | – | Leer zeigt eine Aufzeichnung, `plan` den gemeinsamen Grundriss aus mehreren. |
+| `view` | – | Leer oder `run` zeigt eine Aufzeichnung, `plan` den gemeinsamen Grundriss aus mehreren. Bindbar in beide Richtungen. |
+| `show-toggle` | aus | Ein Knopf in der Leiste, der zwischen Grundriss und Läufen umschaltet. |
 | `plan-file` | – | Fertiger Grundriss neben den Aufzeichnungen. Bindbar: `[plan-file]="Staubsauger:planFile"`. Ein Pfad wird auf den Dateinamen reduziert. Ohne den wird im Browser gerechnet – siehe unten, warum das ab einer Handvoll Läufen keine gute Idee ist. |
 | `plan-runs` | `4` | Wie viele der neuesten Läufe in einen selbst gerechneten Grundriss eingehen. |
 | `plan-agree` | `0.5` | Welcher Anteil der Läufe, die hingesehen haben, eine Zelle Wand nennen muss. |
@@ -341,6 +342,25 @@ Standard mit 26 Linien.
 <ftui-neato-map device="Staubsauger" view="plan"
                 plan-file="plan-Staubsauger.json"></ftui-neato-map>
 ```
+
+Der Grundriss ist eine **eigene Ansicht**, keine Zutat zur Laufansicht – ohne
+`view="plan"` wird `plan-file` gar nicht erst geladen. Wer beides in einer
+Kachel will, nimmt `show-toggle`:
+
+```html
+<ftui-neato-map device="Staubsauger" show-toggle
+                [plan-file]="Staubsauger:planFile"
+                [track-file]="Staubsauger:trackFile"
+                [state]="Staubsauger:state"></ftui-neato-map>
+```
+
+Links in der Leiste sitzt dann ein Knopf, der umschaltet. Der Grundriss bleibt
+dabei geladen: einmal gerechnet, kostet das Hin und Her nichts mehr. Die
+Ansicht geht als Änderung nach außen, `(view)="Dummy:state"` folgt ihr also,
+und `view="plan"` als Startwert ist erlaubt.
+
+In der Laufansicht blättern Pfeile, Wischen und die Pfeiltasten wie immer; im
+Grundriss gibt es nichts zu blättern, und sie tun nichts.
 
 Wurde ein Lauf verworfen, weil er nicht passte, steht in der Zeile „3 von 4
 Läufen" statt „3 Läufe", und der Tooltip nennt ihn mit seiner Güte – ein

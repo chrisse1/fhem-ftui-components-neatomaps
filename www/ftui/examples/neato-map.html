@@ -61,6 +61,16 @@
     </ftui-grid-tile>
 
 
+    <!-- Beides in einer Kachel: der Knopf links in der Leiste schaltet
+         zwischen den Laeufen und dem Grundriss um. -->
+    <ftui-grid-tile row="1" col="7" width="6" height="5">
+      <ftui-grid-header>Staubsauger, umschaltbar</ftui-grid-header>
+      <ftui-neato-map device="Staubsauger" show-toggle
+                      [plan-file]="Staubsauger:planFile"
+                      [track-file]="Staubsauger:trackFile"
+                      [state]="Staubsauger:state"></ftui-neato-map>
+    </ftui-grid-tile>
+
     <!-- Der gemeinsame Grundriss aus mehreren Laeufen. Das Modul rechnet ihn
          ab v0.20.0 selbst ("set Staubsauger buildPlan", oder
          "attr Staubsauger planAuto 1") und nennt die Datei im Reading

@@ -90,6 +90,14 @@
                       show-info="false" [plan-file]="Staubsauger:planFile"></ftui-neato-map>
     </ftui-grid-tile>
 
+    <!-- Eine Kachel fuer beides: der Knopf in der Leiste schaltet zwischen
+         dem Grundriss und den Laeufen um. -->
+    <ftui-grid-tile id="switched" row="10" col="4" width="3" height="3">
+      <ftui-grid-header>Umschaltbar</ftui-grid-header>
+      <ftui-neato-map id="map-switch" device="Staubsauger" show-toggle
+                      plan-file="plan-Staubsauger.json"></ftui-neato-map>
+    </ftui-grid-tile>
+
     <!-- The raw endpoints instead of the grid, in a tile of another shape. -->
     <ftui-grid-tile id="points" row="5" col="1" width="3" height="2">
       <ftui-neato-map id="map-points" show-points show-info="false"

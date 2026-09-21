@@ -2,6 +2,15 @@
 # Leerzeile an - neue Eintraege gehoeren also nach oben, und zwischen den
 # Bloecken steht genau eine Leerzeile. Eine Leerzeile direkt hier waere das
 # Ende der Anzeige, bevor sie angefangen hat.
+2026-09-21 ftui-neato-map 1.14.0
+ - show-toggle setzt einen Knopf in die Leiste, der zwischen Grundriss und
+   Laeufen umschaltet. Eine Kachel fuer beides
+ - der Grundriss bleibt dabei geladen - einmal gerechnet kostet das Hin und
+   Her nichts mehr
+ - die Ansicht geht als Aenderung nach aussen, (view)="Dummy:state" folgt
+   ihr also; view="run" ist gleichbedeutend mit leer
+ - im Grundriss blaettern Pfeiltasten und Wischen nicht mehr ins Leere
+
 2026-09-21 ftui-neato-map 1.13.0
  - wurde ein Lauf verworfen, weil er nicht passte, steht in der Zeile
    "3 von 4 Laeufen" statt "3 Laeufe", und der Tooltip nennt ihn mit seiner
