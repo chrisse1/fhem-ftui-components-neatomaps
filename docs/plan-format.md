@@ -91,16 +91,23 @@ Ein Lauf, der nie in dem Raum war, darf nicht mitstimmen. Genau das drückt
 ]
 ```
 
-Optional, und die Anzeige braucht es nicht. Es steht hier, weil die Schwelle,
-unter der ein Lauf verworfen wird, eine Annahme ist und keine Messung – siehe
-Schritt 6 des Verfahrens – und weil das die einzige Stelle ist, an der sich die
-Zahlen sammeln können, die das entscheiden.
+Optional – die Zeichnung braucht es nicht. Trotzdem ist „optional" hier nicht
+gleichbedeutend mit „egal", und der Grund kommt von der Modulseite:
 
-Wer es schreibt: **alle** Läufe, die angeboten wurden, nicht nur die
+> `scores` ist die einzige Stelle, an der ein **stillschweigend verlorener
+> Lauf** überhaupt sichtbar wird. Ohne das Feld ist „ein Lauf fehlt, weil er
+> nicht passte" von „ein Lauf wurde nie angeboten" nicht zu unterscheiden – man
+> sieht nur ein kleineres `runs`.
+
+Genau deshalb steht dort **alle** angebotenen Läufe, nicht nur die
 angenommenen. `score` ist die erreichte Güte (0 bis 1), `used` ob der Lauf im
-Plan steckt. Der Rahmenlauf hat 1,0. `tools/check-plan.mjs` gibt die Liste aus
-und sagt, ob die schlechteste angenommene Güte über der besten abgelehnten
-liegt – trennt die Schwelle nicht, steht es da.
+Plan steckt; der Rahmenlauf hat 1,0. Ein abgelehnter Lauf gehört mit
+`"used": false` in die Liste – das ist der eigentliche Zweck des Feldes.
+
+Die Anzeige nimmt es auf: wurde etwas verworfen, schreibt sie „3 von 4 Läufen"
+statt „3 Läufe" und nennt die Ausreißer im Tooltip. `tools/check-plan.mjs` gibt
+die Liste aus und sagt, wenn die schlechteste angenommene Güte unter der besten
+abgelehnten liegt – dann trennt die Schwelle nicht.
 
 Fehlt das Feld, ist das kein Fehler; es wird nie zum Ablehnen einer Datei
 benutzt und nachsichtig gelesen.
@@ -149,19 +156,8 @@ Dann über alle Aufzeichnungen:
    Eine andere Etage in denselben Rahmen zu zwingen zieht Wände quer durch
    Räume.
 
-   Zur Schwelle gibt es widersprüchliche Messungen, und beide stehen hier, weil
-   die Sache noch nicht entschieden ist. Auf dieser Seite kamen drei echte
-   Läufe derselben Wohnung auf 0,64, 0,68 und 1,0, ein fremder Korridor auf
-   unter 0,3. Auf der Modulseite fiel ein **Teillauf gegen einen vollen auf
-   0,33** und wurde abgelehnt – von beiden Implementierungen unabhängig und mit
-   identischem Ergebnis, es ist also kein Implementierungsfehler, sondern die
-   Schwelle selbst. 0,45 liegt damit zwischen einem Lauf, der dazugehört, und
-   einem, der nicht dazugehört, und trennt sie nicht sauber.
-
-   Ein abgelehnter Teillauf ist ein verlorener Lauf, kein kaputter Grundriss –
-   der Schaden ist also einseitig. Trotzdem: **Bis mehrere volle Läufe
-   vorliegen, ist 0,45 eine Annahme und keine gemessene Grenze.** Wer sie
-   ändert, sollte an beiden Seiten nachmessen.
+   Zur Schwelle siehe unten: sie ist keine Eigenschaft der Wohnung, sondern
+   hängt daran, welcher Lauf der Rahmen ist.
 7. **Abstimmen.** Für jede Zelle, die irgendein Lauf Wand nennt: `walls` ist die
    Zahl der Läufe mit einer Wandzelle **in einer Zelle Umkreis**, `seen` die
    Zahl derer, die die Zelle als Wand oder als frei kennen.
@@ -170,6 +166,52 @@ Die Toleranz von einer Zelle gehört in die Abstimmung, **nicht** in die
 Zellmenge. Zählt man die aufgeweiteten Zellen mit, werden aus 1816 gemessenen
 Zellen über 5000, und die Wohnung sieht aus, als hätte sie meterdicke Wände.
 Das ist ein Fehler, den man leicht macht – er stand in der ersten Fassung hier.
+
+### Was die Güte misst – und was nicht
+
+Zwei Messungen schienen sich zu widersprechen: auf dieser Seite kamen echte
+Läufe derselben Wohnung auf 0,64 bis 1,0, auf der Modulseite fiel ein Teillauf
+auf 0,33. Beide stimmen. Die Güte ist **nicht symmetrisch**, und an denselben
+drei Aufzeichnungen sieht man, warum:
+
+| Rahmen | eingepasster Lauf | Güte |
+|---|---|---|
+| c (voll, 1 h, 1816 Wandzellen) | a (Teillauf) | **0,68** |
+| c | b (Teillauf) | **0,64** |
+| a (Teillauf) | c (voll) | 0,49 |
+| b (Teillauf) | c (voll) | 0,43 |
+| a | b | 0,35 |
+| b | a | 0,34 |
+
+Die Güte ist der Anteil der Wandzellen *des eingepassten Laufs*, die auf einer
+Wand des Rahmens landen. Ein Rahmen, der die Wohnung kaum kennt, kann nichts
+bestätigen – dann ist eine niedrige Güte eine Aussage über den **Rahmen**, nicht
+über den Lauf.
+
+Dazu kommt, dass zwei Teilläufe sich nicht nur in der Größe unterscheiden: a
+und b decken beide etwa 8,5 × 11,5 m ab, teilen aber nur **43 % ihrer
+Wandzellen**. Sie waren in derselben Wohnung und haben verschiedene Wände
+gesehen. Bei so wenig Überschneidung ist „dieselbe Wohnung, andere Hälfte" von
+„eine andere Wohnung" schlicht nicht zu unterscheiden – die Information ist
+nicht da. Ein Lauf abzulehnen ist dann kein Fehler, sondern die ehrliche
+Antwort.
+
+Daraus folgt dreierlei:
+
+1. **Die Wahl des Rahmens ist die halbe Miete.** Schritt 4 nimmt den Lauf mit
+   den meisten Wandzellen, und genau deshalb stehen die Zahlen in der Praxis
+   in der oberen Zeile der Tabelle, nicht in der unteren.
+2. **0,45 ist keine Konstante der Wohnung.** Mit einem vollen Lauf als Rahmen
+   landen echte Läufe bei 0,64 und darüber, da stellt sich die Frage nicht.
+   Ohne einen solchen Rahmen ist sie nicht entscheidbar, und keine Schwelle
+   ändert das.
+3. **Erst wenn ein echter Lauf mit gutem Rahmen unter 0,45 fällt, ist die
+   Schwelle zu hoch.** Danach zu suchen ist der Sinn von `scores`.
+
+Wer die Güte verbessern will, müsste sie auf den Bereich beziehen, den beide
+Läufe überhaupt gesehen haben, statt auf alle Zellen des eingepassten. Das
+ändert die Zahlen auf beiden Seiten und gehört abgesprochen – hier steht es als
+Vorschlag, nicht als Plan.
 
 ### Die Drehung einmal je Winkel
 

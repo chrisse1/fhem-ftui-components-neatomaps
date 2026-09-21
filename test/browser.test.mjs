@@ -951,6 +951,52 @@ test('a plan that has not been computed yet is a message, not a wreck',
     }
   });
 
+test('a run that did not fit is said out loud, not just left out',
+  { skip: missing.join(', ') || false }, async () => {
+    const context = await open();
+
+    try {
+      // A plan whose file says one of four runs was dropped. The picture is
+      // the same; what changes is that the line admits it.
+      const seen = await context.page.evaluate(async () => {
+        const map = document.querySelector('#map-planfile');
+        const read = () => ({
+          sub: map.shadowRoot.querySelector('.sub').textContent,
+          title: map.shadowRoot.querySelector('.sub').title,
+          sure: map.shadowRoot.querySelectorAll('.stage svg g.plan-sure rect').length,
+        });
+
+        map.setAttribute('show-info', 'true');
+        await new Promise(done => setTimeout(done, 400));
+        const before = read();
+
+        const plan = await (await fetch('/fhem/neato/plan-Staubsauger.json')).json();
+        plan.scores = [
+          { file: 'a.jsonl', score: 1, used: true },
+          { file: 'b.jsonl', score: 0.71, used: true },
+          { file: 'c.jsonl', score: 0.64, used: true },
+          { file: 'd.jsonl', score: 0.33, used: false },
+        ];
+        // Served back to the component through a URL of its own.
+        const url = URL.createObjectURL(new Blob([JSON.stringify(plan)], { type: 'application/json' }));
+        map.setAttribute('dir', url.slice(0, url.lastIndexOf('/') + 1));
+        map.setAttribute('plan-file', url.slice(url.lastIndexOf('/') + 1));
+        await new Promise(done => setTimeout(done, 600));
+        return { before, after: read() };
+      });
+
+      assert.match(seen.before.sub, /3 Läufe|3 runs/);
+      assert.equal(seen.before.title, '', 'nothing was dropped, so nothing to explain');
+
+      assert.match(seen.after.sub, /3 von 4|3 of 4/);
+      assert.match(seen.after.title, /d\.jsonl \(0\.33\)/);
+      assert.ok(!seen.after.title.includes('b.jsonl'), 'a run that did fit is in the tooltip');
+      assert.equal(seen.after.sure, seen.before.sure, 'the picture changed as well');
+    } finally {
+      await context.close();
+    }
+  });
+
 test('the raw endpoints can be drawn instead of the grid',
   { skip: missing.join(', ') || false }, async () => {
     const context = await open();

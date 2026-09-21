@@ -342,6 +342,10 @@ Standard mit 26 Linien.
                 plan-file="plan-Staubsauger.json"></ftui-neato-map>
 ```
 
+Wurde ein Lauf verworfen, weil er nicht passte, steht in der Zeile „3 von 4
+Läufen" statt „3 Läufe", und der Tooltip nennt ihn mit seiner Güte – ein
+verlorener Lauf soll nicht stillschweigend verschwinden.
+
 Drei Arten Zelle, und der Unterschied zwischen ihnen ist der ganze Grund,
 mehrere Läufe zu nehmen: worauf sie sich einigen (voll gezeichnet), was nur
 einer je gesehen hat (blass – niemand widerspricht, niemand bestätigt), und was

@@ -2,6 +2,18 @@
 # Leerzeile an - neue Eintraege gehoeren also nach oben, und zwischen den
 # Bloecken steht genau eine Leerzeile. Eine Leerzeile direkt hier waere das
 # Ende der Anzeige, bevor sie angefangen hat.
+2026-09-21 ftui-neato-map 1.13.0
+ - wurde ein Lauf verworfen, weil er nicht passte, steht in der Zeile
+   "3 von 4 Laeufen" statt "3 Laeufe", und der Tooltip nennt ihn mit seiner
+   Guete. Ein verlorener Lauf soll nicht stillschweigend verschwinden
+ - die widerspruechlichen Guetezahlen sind aufgeklaert: die Guete ist nicht
+   symmetrisch. Sie misst, wieviel des eingepassten Laufs der Rahmen
+   bestaetigen kann - mit dem vollen Lauf als Rahmen 0,64 und 0,68, mit
+   einem Teillauf als Rahmen 0,34 bis 0,49. Zwei Teillaeufe derselben
+   Wohnung teilen nur 43 Prozent ihrer Wandzellen
+ - 0,45 ist damit keine Konstante der Wohnung, sondern haengt am Rahmen.
+   Steht in docs/plan-format.md
+
 2026-09-21 ftui-neato-map 1.12.0
  - die Plandatei kann ein Feld "scores" tragen: die Guete je Lauf, auch der
    abgelehnten. Die Schwelle, unter der ein Lauf verworfen wird, ist eine

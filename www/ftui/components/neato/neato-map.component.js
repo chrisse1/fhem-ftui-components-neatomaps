@@ -69,6 +69,8 @@ const TEXTS = {
     plan: 'Grundriss',
     building: 'Grundriss wird gerechnet …',
     runs: '%s Läufe',
+    ofRuns: '%s von %t Läufen',
+    didNotFit: 'Passte nicht',
     oneRun: 'ein Lauf',
     noPlan: 'Kein Grundriss - keine Aufzeichnung gefunden',
     planMissing: 'Grundriss noch nicht gerechnet',
@@ -89,6 +91,8 @@ const TEXTS = {
     plan: 'Floor plan',
     building: 'Building the floor plan …',
     runs: '%s runs',
+    ofRuns: '%s of %t runs',
+    didNotFit: 'Did not fit',
     oneRun: 'one run',
     noPlan: 'No floor plan - no recording found',
     planMissing: 'No floor plan computed yet',
@@ -607,6 +611,11 @@ export class FtuiNeatoMap extends FtuiElement {
     }
 
     this.plan = mergePlan(surveys, { cell: this.gridCell });
+    this.plan.scores = [
+      ...this.plan.placements.map(entry => ({ ...entry, used: true })),
+      ...this.plan.rejected.map(entry => ({ ...entry, used: false })),
+    ].map(entry => ({ file: names[entry.index] || '', score: entry.score, used: entry.used }))
+      .sort((a, b) => b.score - a.score);
     this.planKey = wanted;
     this.session = null;
     this.loadedName = '';
@@ -640,7 +649,19 @@ export class FtuiNeatoMap extends FtuiElement {
       walls: entry[2],
       seen: entry[3] === undefined ? entry[2] : entry[3],
     }));
-    return { cells, cell, runs: Number(raw && raw.runs) || 0, placements: [], rejected: [] };
+    // The scores of every run that was offered, not only of those that fit.
+    // Without them a run that was dropped is indistinguishable from one that
+    // was never there - see docs/plan-format.md. Read leniently: the field is
+    // optional and comes from somebody else's program.
+    const scores = (raw && Array.isArray(raw.scores) ? raw.scores : [])
+      .filter(entry => entry && isFinite(Number(entry.score)))
+      .map(entry => ({
+        file: String(entry.file || ''),
+        score: Number(entry.score),
+        used: entry.used !== false,
+      }));
+
+    return { cells, cell, runs: Number(raw && raw.runs) || 0, scores, placements: [], rejected: [] };
   }
 
   get gridCell() {
@@ -931,7 +952,16 @@ export class FtuiNeatoMap extends FtuiElement {
     const plan = this.plan;
     const parts = [];
     if (plan && plan.cells.length) {
-      parts.push(plan.runs === 1 ? texts.oneRun : texts.runs.replace('%s', String(plan.runs)));
+      // A run that did not fit must not disappear without a word: "3 runs"
+      // and "3 of 4 runs" are different statements about the same picture.
+      const dropped = (plan.scores || []).filter(entry => !entry.used);
+      if (dropped.length) {
+        parts.push(texts.ofRuns
+          .replace('%s', String(plan.runs))
+          .replace('%t', String(plan.runs + dropped.length)));
+      } else {
+        parts.push(plan.runs === 1 ? texts.oneRun : texts.runs.replace('%s', String(plan.runs)));
+      }
       const sure = plan.cells.filter(cell => this.agreed(cell)).length;
       parts.push(`${(sure * plan.cell * plan.cell).toLocaleString(
         this.locale || document.documentElement.lang || undefined,
@@ -942,7 +972,12 @@ export class FtuiNeatoMap extends FtuiElement {
       }
     }
 
+    const dropped = (plan && plan.scores ? plan.scores : []).filter(entry => !entry.used);
     this.subElement.innerHTML = parts.join(' · ').replace(/[<>&]/g, '');
+    this.subElement.title = dropped.length
+      ? `${texts.didNotFit}: ${dropped.map(entry =>
+        `${entry.file || '?'} (${entry.score.toFixed(2)})`).join(', ')}`
+      : '';
   }
 
   /** Whether enough of the runs that looked call this cell a wall. */
