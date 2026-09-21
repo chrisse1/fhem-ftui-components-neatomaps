@@ -288,6 +288,18 @@ tools/make_controls.sh
 ```
 
 Wird das vergessen, schlägt `test/controls.test.mjs` fehl – dafür ist er da.
+
+Die Standardwerte der Vereinfachung sind an *einer* Aufzeichnung gemessen.
+Ob sie für eine dichtere passen, beantwortet keine Meinung, sondern:
+
+```sh
+node tools/tune-walls.mjs /opt/fhem/www/neato/<Datei>.jsonl karte.svg
+```
+
+Das stellt für eine Reihe von Einstellungen die Zahl der Segmente (wie ruhig
+das Bild ist) der Abdeckung gegenüber (wie viel von dem, was das Gitter Wand
+nennt, die Linien wirklich treffen) und schreibt die Karte als SVG zum
+Ansehen. Besser ist, was die erste Zahl senkt, ohne die zweite zu senken.
 Neue Einträge in `CHANGED` gehören nach oben, vor die erste Leerzeile: FHEM
 zeigt beim Update genau diesen Block an.
 
