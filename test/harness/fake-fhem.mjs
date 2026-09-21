@@ -101,7 +101,7 @@ export async function startFakeFhem(options) {
         if (state.refusePerl) {
           return send(response, 'Forbidden: Perl commands are not allowed');
         }
-        const names = await listSessions(options.dataDir);
+        const names = await listSessions(options.dataDir, command);
         return send(response, names.join('\n'));
       }
       return send(response, '');
@@ -140,8 +140,19 @@ export async function startFakeFhem(options) {
   };
 }
 
-async function listSessions(dir) {
+/**
+ * The recordings the Perl one-liner would list.
+ *
+ * The command carries a glob - <./www/neato/Staubsauger-*.jsonl> - and a real
+ * FHEM honours the device prefix in it. So does this, otherwise a file put
+ * into the directory for another test would show up in every device's list.
+ */
+async function listSessions(dir, command = '') {
   const { readdir } = await import('node:fs/promises');
   const names = await readdir(dir);
-  return names.filter(name => name.endsWith('.jsonl')).sort().reverse();
+  const glob = (String(command).match(/<([^>]+)>/) || [])[1] || '*.jsonl';
+  const pattern = new RegExp('^' + glob.split('/').pop()
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
+
+  return names.filter(name => pattern.test(name)).sort().reverse();
 }

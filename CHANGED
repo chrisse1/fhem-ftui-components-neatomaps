@@ -2,6 +2,18 @@
 # Leerzeile an - neue Eintraege gehoeren also nach oben, und zwischen den
 # Bloecken steht genau eine Leerzeile. Eine Leerzeile direkt hier waere das
 # Ende der Anzeige, bevor sie angefangen hat.
+2026-09-21 ftui-neato-map 1.5.0
+ - show-missed schraffiert den Boden, ueber den die Buerste nie gefahren ist,
+   und schreibt die Abdeckung in die Zeile darunter. An zwei echten Laeufen
+   gemessen: 86 Prozent einer ganzen Wohnung, 74 bei einem Lauf, der
+   vorzeitig endete
+ - bei einer ausgeduennten Aufzeichnung passiert nichts: liegen zwischen zwei
+   Posen zwanzig Sekunden, ist nicht bekannt, wo er dazwischen war
+ - show-stuck zeichnet einen Ring um die Stellen, an denen er abseits der
+   Basis stehen geblieben ist - an der Teppichkante, unter dem Schrank. Die
+   Sekunden stehen im Tooltip
+ - brush-width, stuck-seconds, missed-color und stuck-color stellen das ein
+
 2026-09-21 ftui-neato-map 1.4.0
  - die Karte dreht sich in die Vierteldrehung, die die Kachel am besten
    fuellt. Die Achsen einer Aufzeichnung sind die Blickrichtung des Roboters

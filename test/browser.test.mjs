@@ -75,6 +75,12 @@ async function makeData() {
     await writeFile(join(dir, name), out.join('\n') + '\n');
   }
 
+  // And, under another device name so it stays out of the Staubsauger list,
+  // the made-up room with a dense track: the only one of these that can say
+  // anything about which floor the brush went over.
+  await writeFile(join(dir, 'Testraum-2026-01-02_09-00-00.jsonl'),
+    await readFile(join(here, 'fixtures/room-run.jsonl'), 'utf8'));
+
   return dir;
 }
 
@@ -165,6 +171,9 @@ function probe(page, id) {
       wallLines: svg ? svg.querySelectorAll('g.walls line').length : 0,
       free: svg ? svg.querySelectorAll('g.free rect').length : 0,
       points: svg ? svg.querySelectorAll('g.points rect').length : 0,
+      missed: svg ? svg.querySelectorAll('g.missed rect').length : 0,
+      hatch: svg ? svg.querySelectorAll('pattern#neato-missed line').length : 0,
+      stuck: svg ? svg.querySelectorAll('circle.stuck').length : 0,
       track: svg ? svg.querySelectorAll('polyline.track').length : 0,
       viewBox: svg ? svg.getAttribute('viewBox') : '',
       newerDisabled: root.querySelector('.newer').disabled,
@@ -328,6 +337,69 @@ test('a fixed rotation is obeyed', { skip: missing.join(', ') || false }, async 
     const ninety = boxes.ninety.split(' ');
     assert.deepEqual([zero[2], zero[3]], [ninety[3], ninety[2]],
       'a quarter turn has to swap the sides of the view box');
+  } finally {
+    await context.close();
+  }
+});
+
+test('the floor he left out is hatched, and counted in the line', { skip: missing.join(', ') || false }, async () => {
+  const context = await open();
+
+  try {
+    const room = await probe(context.page, 'map-room');
+
+    assert.ok(room.missed > 0, 'nothing is marked as left out');
+    assert.equal(room.hatch, 1, 'the hatching pattern is missing');
+    assert.ok(/7[0-9] %/.test(room.sub), `the line says "${room.sub}", expected a coverage in the seventies`);
+
+    // The thinned recordings cannot say anything about it, and say nothing:
+    // a straight line between two poses twenty seconds apart is an invention.
+    const thin = await probe(context.page, 'map-listed');
+    assert.equal(thin.missed, 0);
+    assert.ok(!thin.sub.includes('%'), `the line says "${thin.sub}"`);
+
+    // And off is off.
+    const off = await context.page.evaluate(async () => {
+      const map = document.querySelector('#map-room');
+      map.setAttribute('show-missed', 'false');
+      await new Promise(done => setTimeout(done, 400));
+      return {
+        missed: map.shadowRoot.querySelectorAll('.stage svg g.missed rect').length,
+        sub: map.shadowRoot.querySelector('.sub').textContent,
+      };
+    });
+    assert.equal(off.missed, 0);
+    assert.ok(!off.sub.includes('%'), off.sub);
+  } finally {
+    await context.close();
+  }
+});
+
+test('where he stood still and did not go on is marked', { skip: missing.join(', ') || false }, async () => {
+  const context = await open();
+
+  try {
+    const room = await probe(context.page, 'map-room');
+    assert.equal(room.stuck, 1, 'the standstill at the end of the made-up run is not marked');
+
+    // The other recordings end at the base, which is not a standstill worth
+    // a ring - otherwise every finished run would wear one.
+    for (const id of ['map-listed', 'map-celled', 'map-painted']) {
+      assert.equal((await probe(context.page, id)).stuck, 0, `${id} has a ring it should not have`);
+    }
+
+    const off = await context.page.evaluate(async () => {
+      const map = document.querySelector('#map-room');
+      map.setAttribute('show-stuck', 'false');
+      await new Promise(done => setTimeout(done, 400));
+      const rings = map.shadowRoot.querySelectorAll('.stage svg circle.stuck').length;
+      map.setAttribute('show-stuck', 'true');
+      map.setAttribute('stuck-seconds', '300');
+      await new Promise(done => setTimeout(done, 400));
+      return { rings, tooShort: map.shadowRoot.querySelectorAll('.stage svg circle.stuck').length };
+    });
+    assert.equal(off.rings, 0, 'show-stuck="false" still draws a ring');
+    assert.equal(off.tooShort, 0, 'a 40 s standstill counts against a 300 s limit');
   } finally {
     await context.close();
   }

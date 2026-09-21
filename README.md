@@ -123,6 +123,10 @@ Solange `state` auf `cleaning` steht, wird die laufende Aufzeichnung alle
 | `show-points` | aus | Die rohen Endpunkte statt des Belegungsgitters zeichnen. |
 | `show-info` | an | Zeile mit Datum, Strecke, Dauer und Zähler. |
 | `show-controls` | an | Die Pfeile zum Blättern. |
+| `show-missed` | aus | Den Boden schraffieren, über den die Bürste nie gefahren ist, und die Abdeckung in die Zeile schreiben. Bei einer ausgedünnten Aufzeichnung passiert nichts – siehe unten. |
+| `brush-width` | `0.32` | Breite des Roboters in Metern. Alles, was näher als die Hälfte davon an der Spur liegt, gilt als gesaugt. |
+| `show-stuck` | an | Einen Ring um die Stellen zeichnen, an denen er abseits der Basis stehen geblieben ist. |
+| `stuck-seconds` | `20` | Ab wann das ein Stehenbleiben ist. `0` schaltet es ab. |
 | `text-size` | `0.8` | Schriftgröße der Zeile unter der Karte. Eine bloße Zahl ist em (wie bei `margin` in FTUI), sonst gilt jede CSS-Länge: `text-size="1.4"`, `text-size="16px"`. |
 | `arrow-size` | `1.9` | Kantenlänge der Blätterpfeile, in denselben Einheiten. Ohne Angabe wachsen sie mit `text-size` mit. |
 | `min-height` | `4` | Wie flach die Kartenfläche schrumpfen darf, wenn der Platz knapp wird. |
@@ -133,6 +137,8 @@ Solange `state` auf `cleaning` steht, wird die laufende Aufzeichnung alle
 | `point-color` | `info` | Farbe der Endpunkte bei `show-points`. |
 | `start-color` | `success` | Punkt am Anfang des Laufs. |
 | `end-color` | `danger` | Punkt am Ende – und der Punkt für den Roboter, solange er fährt. |
+| `missed-color` | `danger` | Farbe der Schraffur über dem ausgelassenen Boden. |
+| `stuck-color` | `danger` | Farbe des Rings um eine Stelle, an der er stehen blieb. |
 | `text-color` | `light` | Farbe der Zeile und der Pfeile. |
 | `background-color` | durchsichtig | Untergrund der Kartenfläche; ohne Angabe scheint die Kachel durch. |
 | `locale` | Seitensprache | `de` oder `en`, für Datum und die wenigen Texte. |
@@ -299,6 +305,43 @@ Gitter als Wand zählt – die rohe Evidenz, ohne jede Glättung.
 Dieselbe Aufzeichnung, links `walls="cells"` mit 158 Rechtecken, rechts der
 Standard mit 26 Linien.
 
+## Wie der Lauf gelaufen ist
+
+Zwei Dinge stehen in der Aufzeichnung, die man der Karte nicht ansieht.
+`neato-run.js` rechnet sie aus, beide aus der Fahrspur, beide ohne das Modul
+anzufassen.
+
+### Was er ausgelassen hat
+
+`show-missed` schraffiert den Boden, über den die Bürste nie gefahren ist, und
+schreibt die Abdeckung in die Zeile darunter. Der Roboter ist eine Scheibe von
+32 cm, also gilt alles als gesaugt, was näher als 16 cm an seiner Spur liegt;
+was das Belegungsgitter frei nennt und die Spur nicht erreicht hat, blieb
+liegen – die andere Seite einer Tür, durch die er nur geschaut hat, die Ecke
+hinter dem Stuhl, das Zimmer, in das er nicht kam. Die Handbreit an jeder Wand
+gehört dazu: näher kommt eine Scheibe nicht heran.
+
+An zwei echten Läufen gemessen: 86 % einer ganzen Wohnung in einer Stunde,
+74 % bei einem Lauf, der vorzeitig endete. Kosten rund 10 ms, deshalb wird es
+nur gerechnet, wenn es eingeschaltet ist.
+
+**Bei einer ausgedünnten Aufzeichnung passiert nichts.** Liegen zwischen zwei
+Posen zwanzig Sekunden, war der Roboter dazwischen irgendwo, und eine gerade
+Linie durch die Wohnung wäre erfunden. Solche Schritte werden gezählt statt
+überbrückt; sind es mehr als 5 %, gibt es weder Schraffur noch Zahl. Eine Zahl
+unter einer Karte wird geglaubt – lieber keine als eine erfundene.
+
+### Wo er stehen geblieben ist
+
+Am Ende jedes fertigen Laufs steht der Roboter still: an der Basis. Steht er
+zwanzig Sekunden lang irgendwo *sonst*, tut er das nicht freiwillig – er hängt
+an einer Teppichkante, klemmt unter einem Schrank, ein Rad dreht nicht mehr.
+`show-stuck` zeichnet einen Ring darum, die Sekunden stehen im Tooltip.
+
+Dass er sich dabei dreht, spricht nicht dagegen: in der einen Aufzeichnung, die
+so endete, drehte er sich in diesen 21 Sekunden um 39 Grad – er versuchte,
+freizukommen.
+
 ## Was die Karte zeigt
 
 Ein Lidar-Strahl, der bei drei Metern endet, hat auch gemessen, dass der Weg
@@ -319,8 +362,9 @@ beschrieben. Zwei Fallen, die dort stehen und hier in Tests eingemauert sind:
 * In SVG wächst `y` nach unten, in den Daten nach oben.
 
 Und was die Karte *nicht* ist: kein Grundriss der Wohnung, sondern des Laufs.
-Fehlt ein Raum, war der Roboter nicht drin. Zwei Läufe lassen sich nicht
-übereinanderlegen, jeder hat seinen eigenen Nullpunkt.
+Fehlt ein Raum, war der Roboter nicht drin. Jeder Lauf hat seinen eigenen
+Nullpunkt und seine eigene Nordrichtung, und die Komponente zeigt immer genau
+einen.
 
 ### Wie herum die Karte liegt
 
@@ -358,7 +402,17 @@ Die Rechnung lässt sich ohne Roboter, ohne FHEM und ohne Browser prüfen:
 node --test test/session.test.mjs      # nur die Karten-Mathematik
 node --test test/align.test.mjs        # das Aufeinanderlegen der Umdrehungen
 node --test test/walls.test.mjs        # die Vereinfachung der Wände
+node --test test/run.test.mjs          # ausgelassener Boden und Stehenbleiben
 node --test test/controls.test.mjs     # der Index für FHEMs update
+```
+
+Die Referenzaufzeichnung ist ausgedünnt, taugt also nicht, um den
+ausgelassenen Boden zu prüfen. Dafür gibt es einen erfundenen Raum mit dichter
+Spur, dessen Antwort von Hand bekannt ist – 5 × 4 m, in Bahnen bis x = 3,6
+gefahren, dann stehen geblieben:
+
+```sh
+node tools/make-room-fixture.mjs       # schreibt test/fixtures/room-run.jsonl
 ```
 
 `controls_neatomaps.txt` nennt Größe und Zeitstempel jeder Datei, und FHEM

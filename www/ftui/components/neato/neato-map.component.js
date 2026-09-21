@@ -24,6 +24,7 @@ import { isNumeric, debounce } from '../../modules/ftui/ftui.helper.js';
 import * as track from './neato-track.js';
 import { wallLines, wallTest } from './neato-walls.js';
 import { alignScans } from './neato-align.js';
+import { countMissed, trackIsDense, standstills } from './neato-run.js';
 
 /*
 * Attributes that are nothing but a CSS custom property on the element.
@@ -44,6 +45,8 @@ const STYLE_ATTRIBUTES = {
   'end-color': ['--neato-map-end-color', 'color'],
   'text-color': ['--neato-map-text-color', 'color'],
   'background-color': ['--neato-map-background', 'color'],
+  'missed-color': ['--neato-map-missed-color', 'color'],
+  'stuck-color': ['--neato-map-stuck-color', 'color'],
   'free-opacity': ['--neato-map-free-opacity', 'plain'],
 };
 
@@ -59,6 +62,8 @@ const TEXTS = {
     newer: 'neuer',
     minutes: 'min',
     metres: 'm',
+    covered: 'Abdeckung %s %',
+    still: '%s s gestanden',
   },
   en: {
     loading: 'Loading map …',
@@ -71,6 +76,8 @@ const TEXTS = {
     newer: 'newer',
     minutes: 'min',
     metres: 'm',
+    covered: '%s % covered',
+    still: 'stood still for %s s',
   },
 };
 
@@ -177,6 +184,17 @@ export class FtuiNeatoMap extends FtuiElement {
       showPoints: false,
       showInfo: true,
       showControls: true,
+      // What the brush never went over, hatched, plus the share it did cover
+      // in the line below. Off by default: it is an interpretation of the
+      // track, not a measurement, and on a thinned recording it says nothing.
+      showMissed: false,
+      // Width of the robot in metres - everything within half of that of its
+      // centre counts as swept.
+      brushWidth: 0.32,
+      // Standing still this long away from where it set off is not something
+      // a vacuum does on purpose. Marked with a ring. 0 turns it off.
+      showStuck: true,
+      stuckSeconds: 20,
       // Turning the map a quarter at a time. 'auto' picks whichever of the
       // four fills the tile best, which is what a recording needs whose axes
       // are the robot's heading at the moment it set off.
@@ -194,6 +212,8 @@ export class FtuiNeatoMap extends FtuiElement {
       trackColor: '',
       startColor: '',
       endColor: '',
+      missedColor: '',
+      stuckColor: '',
       textColor: '',
       backgroundColor: '',
       locale: '',
@@ -301,6 +321,8 @@ export class FtuiNeatoMap extends FtuiElement {
       case 'clearance':
       case 'min-wall':
       case 'snap-angle':
+      case 'show-missed':
+      case 'brush-width':
         this.view = null;
         this.requestUpdate({});
         break;
@@ -310,6 +332,8 @@ export class FtuiNeatoMap extends FtuiElement {
       case 'show-points':
       case 'show-info':
       case 'show-controls':
+      case 'show-stuck':
+      case 'stuck-seconds':
         this.requestUpdate({});
         break;
     }
@@ -674,6 +698,10 @@ export class FtuiNeatoMap extends FtuiElement {
       parts.push(`${info.distance.toLocaleString(locale, { maximumFractionDigits: 1 })} ${texts.metres}`);
       parts.push(`${Math.round(info.seconds / 60)} ${texts.minutes}`);
     }
+    const missed = this.missedFloor();
+    if (missed) {
+      parts.push(texts.covered.replace('%s', String(Math.round(missed.covered * 100))));
+    }
     if (count > 1) {
       parts.push(`${this.index + 1}/${count}`);
     }
@@ -766,6 +794,16 @@ export class FtuiNeatoMap extends FtuiElement {
       parts.push(rects(view.cells.walls, 'wall'));
     }
 
+    // The floor he left out, hatched: it lies on top of the free area and has
+    // to read as a texture, because it is the same floor, only not cleaned.
+    const missed = this.missedFloor();
+    if (missed && missed.runs.length) {
+      parts.push('<defs><pattern id="neato-missed" width="0.36" height="0.36"'
+        + ' patternUnits="userSpaceOnUse" patternTransform="rotate(45)">'
+        + '<line class="hatch" x1="0" y1="0" x2="0" y2="0.36"/></pattern></defs>'
+        + `<g class="missed">${this.cellRects(missed.runs, view, sx, sy)}</g>`);
+    }
+
     const running = track.stats(this.session).running;
     const poses = this.session.poses;
     if (this.showTrack && poses.length > 1) {
@@ -774,6 +812,15 @@ export class FtuiNeatoMap extends FtuiElement {
         points.push(`${sx(poses[i].x)},${sy(poses[i].y)}`);
       }
       parts.push(`<polyline class="track" points="${points.join(' ')}"/>`);
+    }
+
+    // Where he stood still away from the base: a ring, and the seconds in the
+    // tooltip. Drawn over the track, because that is what it is about.
+    for (const stop of this.standstills()) {
+      parts.push(`<circle class="stuck" cx="${sx(stop.x)}" cy="${sy(stop.y)}"`
+        + ` r="${(radius * 2.4).toFixed(3)}"><title>`
+        + `${this.texts.still.replace('%s', String(Math.round(stop.seconds)))}`
+        + '</title></circle>');
     }
 
     if (poses.length) {
@@ -822,6 +869,30 @@ export class FtuiNeatoMap extends FtuiElement {
 
     out.push('</g>');
     return out.join('');
+  }
+
+  /**
+   * The floor the brush never went over - or nothing, if that cannot be said.
+   *
+   * A recording whose poses are far apart says nothing about where the robot
+   * drove between two of them, and a share of the floor computed from it would
+   * be a number with nothing behind it. Then there is none.
+   */
+  missedFloor() {
+    if (!this.showMissed || !this.session || this.note || this.showPoints) {
+      return null;
+    }
+    this.prepare();
+    return this.view.missed && trackIsDense(this.view.missed) ? this.view.missed : null;
+  }
+
+  /** Where he stood still long enough that something was wrong. */
+  standstills() {
+    const seconds = Number(this.stuckSeconds);
+    if (!this.showStuck || !this.session || !(seconds > 0)) {
+      return [];
+    }
+    return standstills(this.session, { seconds });
   }
 
   /**
@@ -880,6 +951,13 @@ export class FtuiNeatoMap extends FtuiElement {
     const points = scans === this.session.scans ? this.view.points : track.allPoints(scans);
     this.view.grid = track.occupancy(scans, cell, points);
     this.view.cells = track.classify(this.view.grid, threshold, seen);
+
+    // Which of the free floor the brush never went over. Costs about 10 ms on
+    // an hour long run, so it is only done when it is asked for.
+    if (this.showMissed) {
+      this.view.missed = countMissed(this.view.grid, this.view.cells, this.session.poses,
+        { width: Number(this.brushWidth) });
+    }
 
     if (this.walls === 'lines') {
       const { walls, direction } = wallLines(scans, this.view.grid,

@@ -40,6 +40,8 @@
   --map-track: var(--neato-map-track-color, var(--warning-color, #ffb454));
   --map-start: var(--neato-map-start-color, var(--success-color, #5fd35f));
   --map-end: var(--neato-map-end-color, var(--danger-color, #e05252));
+  --map-missed: var(--neato-map-missed-color, var(--danger-color, #e05252));
+  --map-stuck: var(--neato-map-stuck-color, var(--danger-color, #e05252));
 }
 
 .stage {
@@ -81,6 +83,26 @@
   vector-effect: non-scaling-stroke;
 }
 .points { fill: var(--map-point); opacity: 0.75; }
+
+/* The floor he left out. Hatched rather than filled: it is the same floor as
+   around it, so it has to read as a texture and not as another room. */
+.missed { fill: url(#neato-missed); opacity: var(--neato-map-missed-opacity, 0.55); }
+
+.hatch {
+  stroke: var(--map-missed);
+  stroke-width: 0.1;
+  /* The map is drawn with crisp edges, which turns a thin diagonal into a
+     staircase. */
+  shape-rendering: geometricPrecision;
+}
+
+/* A ring around the spot where he stopped and did not go on. */
+.stuck {
+  fill: none;
+  stroke: var(--map-stuck);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
 
 .track {
   fill: none;
