@@ -12,9 +12,14 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync, readdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
+import { parseSession } from '../www/ftui/components/neato/neato-track.js';
 import { survey, mergePlan, confident, disputed, frameOf, registerTo }
   from '../www/ftui/components/neato/neato-plan.js';
+
+const here = (name) => fileURLToPath(new URL(name, import.meta.url));
 
 /**
  * A recording of a room, as the robot in that room would have written it.
@@ -205,6 +210,37 @@ test('the plan is made of measured cells, not of the slack around them', () => {
   assert.ok(plan.cells.every(cell => cell.seen >= cell.walls && cell.walls >= 1));
 });
 
+test('the dominant direction is an optimisation, not a crutch', () => {
+  // Four candidate rotations instead of a hundred and twenty is worth having,
+  // but a flat whose walls do not agree on a direction would get four wrong
+  // candidates. Told nothing at all, the search has to find the same answer -
+  // that is what the fallback is for, and what a port may implement instead.
+  const first = survey(recording(FLAT, STOPS));
+  const second = survey(recording(moved(FLAT, -90, 2, -1), STOPS.map(([x, y]) => {
+    const radians = -90 * Math.PI / 180;
+    return [Math.cos(radians) * x - Math.sin(radians) * y + 2,
+      Math.sin(radians) * x + Math.cos(radians) * y - 1];
+  })));
+
+  const frame = frameOf(first.walls);
+  const guided = registerTo(frame, second, first.direction);
+  const blind = registerTo(frame, second, null);
+
+  const degrees = (fit) => ((fit.angle * 180 / Math.PI) % 360 + 360) % 360;
+  assert.ok(Math.abs(degrees(blind) - degrees(guided)) < 1.5,
+    `${degrees(blind).toFixed(1)} without the direction against ${degrees(guided).toFixed(1)} with it`);
+  assert.ok(Math.hypot(blind.x - guided.x, blind.y - guided.y) < 0.2,
+    `${blind.x.toFixed(2)}/${blind.y.toFixed(2)} against ${guided.x.toFixed(2)}/${guided.y.toFixed(2)}`);
+  assert.ok(blind.score > 0.7);
+
+  // And a direction that is nonsense does not wreck the match: the four
+  // candidates come out poor, and the search looks everywhere after all.
+  const misled = registerTo(frame, { ...second, direction: second.direction + 0.7 },
+    first.direction);
+  assert.ok(Math.abs(degrees(misled) - degrees(guided)) < 1.5,
+    `a wrong direction gave ${degrees(misled).toFixed(1)}`);
+});
+
 test('nothing, one run, and a run without walls do not throw', () => {
   assert.deepEqual(mergePlan([]).cells, []);
   assert.equal(mergePlan([]).runs, 0);
@@ -220,4 +256,47 @@ test('nothing, one run, and a run without walls do not throw', () => {
   assert.deepEqual(frame.bounds, { minX: 0, maxX: 0, minY: 0, maxY: 0 });
   assert.equal(registerTo(frame, empty, 0).score, 0);
   assert.equal(mergePlan([one, empty]).runs, 1, 'a run without walls was placed');
+});
+
+test('the reference case in test/fixtures/plan still is what it says it is', () => {
+  // The fixtures are what another implementation checks itself against, so a
+  // change here that nobody noticed would mislead somebody else. This is the
+  // same comparison tools/check-plan.mjs makes, at its own thresholds.
+  const dir = here('fixtures/plan/');
+  const stored = JSON.parse(readFileSync(`${dir}plan.json`, 'utf8'));
+  const names = readdirSync(dir).filter(name => name.endsWith('.jsonl')).sort().reverse();
+
+  assert.equal(names.length, 3, 'the three recordings of the reference case');
+  assert.equal(stored.cell, 0.1);
+  assert.equal(stored.runs, 3, 'a run of the reference case is no longer placed');
+
+  const built = mergePlan(names.map(name =>
+    survey(parseSession(readFileSync(`${dir}${name}`, 'utf8')))));
+
+  assert.equal(built.runs, 3);
+  assert.ok(Math.abs(built.cells.length / stored.cells.length - 1) < 0.15,
+    `${built.cells.length} cells now, ${stored.cells.length} in the file`
+    + ' - run tools/make-plan-fixture.mjs if that is meant');
+
+  const known = new Set(stored.cells.map(cell => `${cell[0]},${cell[1]}`));
+  const near = (x, y) => {
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        if (known.has(`${Math.round(x / built.cell) + dx},${Math.round(y / built.cell) + dy}`)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+  const found = built.cells.filter(cell => near(cell.x, cell.y)).length;
+  assert.ok(found / built.cells.length > 0.95,
+    `only ${(100 * found / built.cells.length).toFixed(1)} % of the cells are where the file says`);
+
+  // And every cell in the file obeys the format the other side implements.
+  for (const [ix, iy, walls, seen] of stored.cells) {
+    assert.ok(Number.isInteger(ix) && Number.isInteger(iy), 'cells are indices, not metres');
+    assert.ok(walls >= 1 && seen >= walls && seen <= stored.runs,
+      `walls ${walls}, seen ${seen}, runs ${stored.runs}`);
+  }
 });

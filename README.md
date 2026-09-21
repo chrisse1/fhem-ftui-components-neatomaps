@@ -423,6 +423,16 @@ austauschbar: dieses Werkzeug, ein Aufruf aus FHEM heraus, oder eines Tages
 das Modul selbst. Die Komponente zeichnet nur noch. Ein Browser-Test hält
 beide Wege gegeneinander und besteht nur, wenn dasselbe Bild herauskommt.
 
+Für eine zweite Implementierung – im Modul, in Perl oder Python – steht das
+Format samt Verfahren, Referenzfall und Prüfverfahren in
+[`docs/plan-format.md`](docs/plan-format.md). Ob sie übereinstimmt, beantwortet
+ein Kommando statt einer Meinung:
+
+```sh
+node tools/check-plan.mjs plan.json --against test/fixtures/plan/plan.json
+node tools/check-plan.mjs plan.json --runs /opt/fhem/www/neato
+```
+
 ## Wie der Lauf gelaufen ist
 
 Zwei Dinge stehen in der Aufzeichnung, die man der Karte nicht ansieht.
@@ -533,6 +543,8 @@ gefahren, dann stehen geblieben:
 ```sh
 node tools/make-room-fixture.mjs       # schreibt test/fixtures/room-run.jsonl
 node tools/make-plan.mjs <verz> <geraet>   # schreibt plan-<geraet>.json
+node tools/make-plan-fixture.mjs       # schreibt test/fixtures/plan/
+node tools/check-plan.mjs <plan.json>  # prueft eine fremde Plandatei
 ```
 
 `controls_neatomaps.txt` nennt Größe und Zeitstempel jeder Datei, und FHEM

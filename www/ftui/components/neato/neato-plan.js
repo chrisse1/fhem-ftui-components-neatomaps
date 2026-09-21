@@ -49,6 +49,9 @@ const DEFAULTS = {
   margin: 5,
   // Refinement, from coarse to fine: degrees and metres per stage.
   stages: [[1.2, 0.15], [0.3, 0.05], [0.1, 0.02]],
+  // The step of the full sweep, in degrees. Only used when the dominant
+  // directions are no help - see registerTo.
+  sweepDegrees: 3,
   // A match below this is not a match. Measured: the three runs here score
   // 0.63 and 0.68, a deliberate mismatch stays under 0.3.
   accept: 0.45,
@@ -169,24 +172,49 @@ export function registerTo(frame, run, target, options = {}) {
   const { minX, maxX, minY, maxY } = frame.bounds;
   const margin = settings.margin;
 
-  // Modulo a right angle, and both ways round: a flat's walls run along two
-  // directions at once and nothing says which of them either run measured.
-  const quarter = Math.PI / 2;
-  const turn = ((((target - run.direction) % quarter) + quarter) % quarter);
-  const candidates = [0, 1, 2, 3].map(k => turn + k * quarter);
-
   // Every fifth cell for the sweep: the sweep only has to find the right
   // neighbourhood, and the refinement below uses all of them.
   const sparse = Math.max(1, Math.round(run.walls.length / 2 / 400));
-  let best = { angle: candidates[0], x: 0, y: 0, score: -1 };
 
-  for (const angle of candidates) {
-    for (let x = minX - margin; x <= maxX + margin; x += settings.step) {
-      for (let y = minY - margin; y <= maxY + margin; y += settings.step) {
-        const score = fits(frame, run.walls, angle, x, y, sparse);
-        if (score > best.score) {
-          best = { angle, x, y, score };
+  const sweep = (angles) => {
+    let best = { angle: angles[0], x: 0, y: 0, score: -1 };
+    for (const angle of angles) {
+      for (let x = minX - margin; x <= maxX + margin; x += settings.step) {
+        for (let y = minY - margin; y <= maxY + margin; y += settings.step) {
+          const score = fits(frame, run.walls, angle, x, y, sparse);
+          if (score > best.score) {
+            best = { angle, x, y, score };
+          }
         }
+      }
+    }
+    return best;
+  };
+
+  // Modulo a right angle, and both ways round: a flat's walls run along two
+  // directions at once and nothing says which of them either run measured.
+  const quarter = Math.PI / 2;
+  const whole = [];
+  for (let degrees = 0; degrees < 360; degrees += settings.sweepDegrees) {
+    whole.push(degrees * Math.PI / 180);
+  }
+
+  let best;
+  if (target === null || target === undefined || !isFinite(run.direction)) {
+    best = sweep(whole);
+  } else {
+    const turn = ((((target - run.direction) % quarter) + quarter) % quarter);
+    best = sweep([0, 1, 2, 3].map(k => turn + k * quarter));
+
+    // The four candidates are an optimisation, and an optimisation has to be
+    // allowed to fail. A flat with round walls, or one where the two runs
+    // measured different walls as the dominant ones, gets four wrong
+    // candidates - and then the honest thing is to look everywhere. It costs
+    // thirty times as much and happens almost never.
+    if (best.score < settings.accept) {
+      const everywhere = sweep(whole);
+      if (everywhere.score > best.score) {
+        best = everywhere;
       }
     }
   }

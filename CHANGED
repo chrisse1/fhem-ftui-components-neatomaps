@@ -2,6 +2,18 @@
 # Leerzeile an - neue Eintraege gehoeren also nach oben, und zwischen den
 # Bloecken steht genau eine Leerzeile. Eine Leerzeile direkt hier waere das
 # Ende der Anzeige, bevor sie angefangen hat.
+2026-09-21 ftui-neato-map 1.10.0
+ - docs/plan-format.md beschreibt das Dateiformat des Grundrisses und das
+   Verfahren dahinter, fuer eine zweite Implementierung im Modul
+ - tools/check-plan.mjs prueft eine fremde Plandatei: Form, und ob sie
+   dasselbe sagt wie diese Implementierung. Verlangt wird keine Gleichheit
+   bis auf die Zelle, sondern Uebereinstimmung innerhalb einer Zelle
+ - test/fixtures/plan/ ist der Referenzfall: drei erfundene Aufzeichnungen
+   derselben Wohnung, jede in eigenem Bezugsrahmen, mit dem Ergebnis
+ - die Drehungssuche faellt auf die vollstaendige Suche zurueck, wenn die
+   vier Kandidaten aus der Wandrichtung nichts taugen. Damit kann eine
+   Portierung die Abkuerzung weglassen
+
 2026-09-21 ftui-neato-map 1.9.0
  - view="plan" zeigt den gemeinsamen Grundriss statt einer Aufzeichnung:
    voll, was die Laeufe einig nennen, blass, was nur einer sah, und in
