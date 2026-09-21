@@ -2,6 +2,14 @@
 # Leerzeile an - neue Eintraege gehoeren also nach oben, und zwischen den
 # Bloecken steht genau eine Leerzeile. Eine Leerzeile direkt hier waere das
 # Ende der Anzeige, bevor sie angefangen hat.
+2026-09-21 ftui-neato-map 1.1.0
+ - Waende werden als gerade Linien gezeichnet statt als Gitterzellen: eine
+   Wand ist eine Linie, rechte Winkel bleiben rechte Winkel, und wer gerade
+   durch den Scan laeuft verschwindet, weil das Belegungsgitter ihn widerlegt
+ - walls="cells" zeigt weiter die rohen Zellen
+ - line-tolerance, join-gap, min-wall und snap-angle stellen die
+   Vereinfachung ein; cell steht jetzt auf 10 cm
+
 2026-09-20 ftui-neato-map 1.0.0
  - erste Fassung: Belegungsgitter aus den Lidar-Scans, gefahrene Spur,
    Blaettern durch die aufgezeichneten Laeufe, Live-Ansicht waehrend einer

@@ -103,7 +103,12 @@ Solange `state` auf `cleaning` steht, wird die laufende Aufzeichnung alle
 | `files` | – | Feste Liste von Dateinamen, durch Komma getrennt. Dann wird FHEM nicht nach der Liste gefragt. |
 | `list-command` | – | Eigenes FHEM-Kommando für die Liste, falls das eingebaute nicht passt. |
 | `refresh-interval` | `30` | Sekunden zwischen zwei Leseversuchen während eines Laufs, `0` schaltet das ab. |
-| `cell` | `0.05` | Zellgröße des Belegungsgitters in Metern. |
+| `walls` | `lines` | Wie die Wände gezeichnet werden: `lines` zieht gerade Linien daraus, `cells` zeigt die Gitterzellen der rohen Evidenz. |
+| `line-tolerance` | `0.04` | Wie weit ein Messpunkt von seiner Linie abweichen darf, in Metern. Größer heißt glatter und ungenauer. |
+| `join-gap` | `0.8` | Bis zu welcher Lücke zwei Stücke derselben Flucht zu einer Wand verbunden werden. `0` verbindet nichts. |
+| `min-wall` | `0.4` | Kürzere Stücke werden weggelassen – Stuhlbeine, Kabel, Kistenecken. |
+| `snap-angle` | `8` | Wie weit ein Stück von der vorherrschenden Richtung abweichen darf, um darauf eingerastet zu werden, in Grad. `0` rastet nichts ein. |
+| `cell` | `0.10` | Zellgröße des Belegungsgitters in Metern. |
 | `threshold` | `0.25` | Ab welchem Anteil Treffer eine Zelle als Wand gilt. |
 | `min-seen` | `2` | Wie oft eine Zelle beobachtet sein muss, bevor sie überhaupt zählt. |
 | `pad` | `0.4` | Rand um die Karte in Metern. |
@@ -164,7 +169,8 @@ direkt setzen lässt – etwa für alle Karten einer Seite auf einmal:
 `--neato-map-free-opacity`, `--neato-map-point-color`,
 `--neato-map-track-color`, `--neato-map-start-color`, `--neato-map-end-color`,
 `--neato-map-background`, `--neato-map-text-color`, `--neato-map-font-size`,
-`--neato-map-arrow-size`, `--neato-map-min-height` und
+`--neato-map-arrow-size`, `--neato-map-min-height`,
+`--neato-map-wall-width` (Strichstärke der Wandlinien in Pixeln) und
 `--neato-map-button-background`.
 
 ## Wie die Liste der Läufe zustande kommt
@@ -189,6 +195,50 @@ Zwei Auswege:
 * `list-command="get myList sessions"` – ein eigenes Kommando, dessen Ausgabe
   Dateinamen sind, durch Zeilenumbruch oder Komma getrennt.
 
+## Warum die Karte ruhiger ist als die Messung
+
+Eine Wohnung besteht aus geraden Wänden, meist rechtwinklig zueinander. Ein
+Lidar, der dieselbe Wand aus vier Positionen sieht, legt vier leicht
+verschiedene Punktreihen darauf – als Zellen gezeichnet ein unscharfes Band,
+als Linie gezeichnet eine Wand. Die Komponente zieht deshalb Linien, in vier
+Schritten:
+
+1. Eine Umdrehung wird an den Sprüngen zerlegt: Wo die Entfernung springt,
+   ist der Strahl an einer Kante vorbei auf etwas anderes getroffen.
+2. Jedes Stück wird dort geteilt, wo es knickt – am Punkt, der am weitesten
+   von der Verbindung seiner Enden abliegt, solange er weiter als
+   `line-tolerance` abliegt.
+3. Stücke, die auf derselben Geraden liegen, werden verbunden, auch über die
+   Lücken hinweg, die Möbel und Türöffnungen lassen (`join-gap`) – aber nur,
+   solange die gemeinsame Gerade ihre Punkte weiter trägt.
+4. Stücke, die fast parallel zur vorherrschenden Richtung liegen, werden
+   genau parallel dazu gedreht (`snap-angle`). Diese Richtung wird gemessen,
+   nicht angenommen: Es ist die, auf die sich die längsten Wände einigen.
+   Steht die Dockingstation schräg zur Wohnung, ist es eben eine schräge.
+
+**Was die Vereinfachung nicht tut:** entscheiden, was Wand ist. Das bleibt
+Sache des Belegungsgitters. Eine Linie wird nur gezeichnet, wo das Gitter sie
+stützt – und genau daran scheitert, wer gerade durch den Scan läuft: Die
+Strahlen der anderen Umdrehungen gingen durch die Stelle hindurch, an der die
+Person stand, also zählt das Gitter die Zellen als frei, und die Linie fällt
+weg. Wer stehen bleibt, ist Möbel und bleibt auf der Karte. Eine Säule bleibt
+rund, weil eine Gerade durch sie ihre Punkte nicht mehr trägt. Und hinter dem
+letzten gemessenen Punkt hört jede Linie auf; eine Ecke, die nie gesehen
+wurde, wird nicht geschlossen.
+
+Das ist in `test/walls.test.mjs` festgehalten, an Lidar-Aufnahmen eines
+gerechneten Zimmers: vier Wände werden vier Linien, die durchlaufende Person
+verschwindet, die stehende Kiste bleibt, die Säule bleibt rund, die ungesehene
+Ecke bleibt offen.
+
+Wem das zu viel Deutung ist: `walls="cells"` zeigt weiter die Zellen, die das
+Gitter als Wand zählt – die rohe Evidenz, ohne jede Glättung.
+
+![Links die Zellen, rechts dieselbe Aufzeichnung als Linien](docs/cells-vs-lines.png)
+
+Dieselbe Aufzeichnung, links `walls="cells"` mit 158 Rechtecken, rechts der
+Standard mit 26 Linien.
+
 ## Was die Karte zeigt
 
 Ein Lidar-Strahl, der bei drei Metern endet, hat auch gemessen, dass der Weg
@@ -212,10 +262,12 @@ Und was die Karte *nicht* ist: kein Grundriss der Wohnung, sondern des Laufs.
 Fehlt ein Raum, war der Roboter nicht drin. Zwei Läufe lassen sich nicht
 übereinanderlegen, jeder hat seinen eigenen Nullpunkt.
 
-Gerechnet wird beim Laden, im Haupt-Thread. Ein langer Lauf mit
-`mapInterval 5` – 300 Scans, 85 000 Punkte – braucht dafür rund 20 ms; das
-Gitter wächst mit der Wohnung, nicht mit der Datenmenge. Ein Worker lohnt
-nicht.
+Gerechnet wird beim Laden, im Haupt-Thread. Für die Referenzaufzeichnung sind
+das rund 30 ms, für einen langen Lauf mit `mapInterval 5` – 300 Scans,
+85 000 Punkte – rund 120 ms: Das Gitter wächst mit der Wohnung, nicht mit der
+Datenmenge, und für die Linien reichen 120 Umdrehungen, weil die übrigen
+dieselben Wände noch einmal zeigen. Welche Zellen Wand sind, entscheidet
+weiterhin jeder einzelne Strahl. Ein Worker lohnt nicht.
 
 ## Entwickeln und Prüfen
 
@@ -223,6 +275,7 @@ Die Rechnung lässt sich ohne Roboter, ohne FHEM und ohne Browser prüfen:
 
 ```sh
 node --test test/session.test.mjs      # nur die Karten-Mathematik
+node --test test/walls.test.mjs        # die Vereinfachung der Wände
 node --test test/controls.test.mjs     # der Index für FHEMs update
 ```
 

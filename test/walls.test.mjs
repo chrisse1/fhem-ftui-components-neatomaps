@@ -1,0 +1,283 @@
+/*
+* Walls as lines: what the simplification may do, and what it may not.
+*
+* The map is allowed to look calmer than the measurements - that is the point
+* of drawing lines. It is not allowed to invent a room. These tests are the
+* line between the two: a straight wall becomes one segment, a round pillar
+* stays round, a wall nobody measured does not appear, and somebody walking
+* through a scan is not turned into furniture.
+*/
+
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+import { parseSession, occupancy, classify } from '../www/ftui/components/neato/neato-track.js';
+import { wallLines, wallTest, mainDirection } from '../www/ftui/components/neato/neato-walls.js';
+
+const here = (name) => fileURLToPath(new URL(name, import.meta.url));
+
+/** A lidar revolution from (x, y): what a robot standing there would see. */
+function look(x, y, world, { blind = () => false } = {}) {
+  const points = [];
+
+  for (let degrees = 0; degrees < 360; degrees += 1) {
+    const radians = degrees * Math.PI / 180;
+    const dx = Math.cos(radians);
+    const dy = Math.sin(radians);
+    let nearest = Infinity;
+
+    // Walk the beam until it meets something - crude, but it is exactly what
+    // a lidar does, and it keeps the fixtures readable.
+    for (let distance = 0.05; distance < 8; distance += 0.01) {
+      const px = x + dx * distance;
+      const py = y + dy * distance;
+      if (blind(px, py)) {
+        continue;
+      }
+      if (world(px, py)) {
+        nearest = distance;
+        break;
+      }
+    }
+
+    if (nearest < Infinity) {
+      points.push([degrees, Math.round(nearest * 1000)]);
+    }
+  }
+
+  return { x, y, th: 0, pts: points };
+}
+
+/** The rectangular room the fixtures live in: 6 x 4 m, walls 6 cm thick. */
+function room(px, py) {
+  const inside = px > 0.06 && px < 5.94 && py > 0.06 && py < 3.94;
+  const outside = px < 0 || px > 6 || py < 0 || py > 4;
+  return !inside && !outside;
+}
+
+function build(scans, options = {}) {
+  const cell = options.cell || 0.10;
+  const grid = occupancy(scans, cell);
+  const cells = classify(grid, 0.25, 2);
+  return {
+    grid,
+    cells,
+    ...wallLines(scans, grid, wallTest(grid, 0.25, 2), options),
+  };
+}
+
+const distance = (wall) => Math.hypot(wall.x1 - wall.x0, wall.y1 - wall.y0);
+
+/** How far a point lies off a segment's line, and whether it is beside it. */
+function offLine(wall, x, y) {
+  const dx = wall.x1 - wall.x0;
+  const dy = wall.y1 - wall.y0;
+  const length = Math.hypot(dx, dy);
+  return Math.abs(dy * (x - wall.x0) - dx * (y - wall.y0)) / length;
+}
+
+test('four walls of a room become four lines', () => {
+  const scans = [look(3, 2, room), look(1.5, 1, room), look(4.5, 3, room)];
+  const { walls } = build(scans);
+
+  const long = walls.filter(wall => distance(wall) > 2);
+  assert.equal(long.length, 4, `expected four walls, got ${walls.length} pieces `
+    + long.map(w => distance(w).toFixed(2)).join(', '));
+
+  // Two of them run along x, two along y, and they are as long as the room.
+  const horizontal = long.filter(w => Math.abs(w.y1 - w.y0) < 0.05);
+  const vertical = long.filter(w => Math.abs(w.x1 - w.x0) < 0.05);
+  assert.equal(horizontal.length, 2);
+  assert.equal(vertical.length, 2);
+  assert.ok(horizontal.every(w => distance(w) > 5), 'the long walls are 6 m');
+  assert.ok(vertical.every(w => distance(w) > 3), 'the short walls are 4 m');
+});
+
+test('the corners stay where the room ends', () => {
+  const scans = [look(3, 2, room), look(1.5, 1, room), look(4.5, 3, room)];
+  const { walls } = build(scans);
+
+  for (const wall of walls) {
+    for (const [x, y] of [[wall.x0, wall.y0], [wall.x1, wall.y1]]) {
+      assert.ok(x > -0.2 && x < 6.2 && y > -0.2 && y < 4.2,
+        `a wall ends at ${x.toFixed(2)}, ${y.toFixed(2)}, outside the room`);
+    }
+  }
+});
+
+test('somebody walking through one scan is not drawn as a wall', () => {
+  // Three revolutions of the same room. In the second one a person stands in
+  // the middle; in the others the beams pass through where they stood.
+  const person = (px, py) => Math.hypot(px - 3, py - 2) < 0.22;
+  const scans = [
+    look(1.5, 1, room),
+    look(1.6, 1.1, (px, py) => room(px, py) || person(px, py)),
+    look(1.4, 0.9, room),
+    look(4.5, 3, room),
+  ];
+
+  const { walls, grid, cells } = build(scans);
+
+  const nearPerson = walls.filter(wall => {
+    const mx = (wall.x0 + wall.x1) / 2;
+    const my = (wall.y0 + wall.y1) / 2;
+    return Math.hypot(mx - 3, my - 2) < 0.6;
+  });
+  assert.equal(nearPerson.length, 0,
+    'the person was drawn as a wall: ' + JSON.stringify(nearPerson));
+
+  // The room itself is still there - the filter did not take it with it.
+  assert.ok(walls.filter(wall => distance(wall) > 2).length >= 4);
+  assert.ok(cells.walls.length > 0 && grid.width > 0);
+});
+
+test('a person standing still in every scan is a wall, and stays', () => {
+  // The other side of the same coin: what does not move is furniture, and
+  // furniture belongs on the map.
+  const box = (px, py) => px > 2.8 && px < 3.6 && py > 1.8 && py < 2.6;
+  const world = (px, py) => room(px, py) || box(px, py);
+  const scans = [look(1.5, 1, world), look(1.6, 1.1, world), look(1.4, 0.9, world)];
+
+  const { walls } = build(scans);
+  const atBox = walls.filter(wall => {
+    const mx = (wall.x0 + wall.x1) / 2;
+    const my = (wall.y0 + wall.y1) / 2;
+    return mx > 2.5 && mx < 3.9 && my > 1.5 && my < 2.9;
+  });
+
+  assert.ok(atBox.length > 0, 'the box in the middle of the room disappeared');
+});
+
+test('a round pillar does not become a straight wall', () => {
+  const pillar = (px, py) => {
+    const r = Math.hypot(px - 3, py - 2);
+    return r > 0.55 && r < 0.62;
+  };
+  const world = (px, py) => room(px, py) || pillar(px, py);
+  const scans = [look(1.5, 1, world), look(1.6, 1.1, world), look(1.4, 0.9, world)];
+
+  const { walls } = build(scans);
+  const atPillar = walls.filter(wall => {
+    const mx = (wall.x0 + wall.x1) / 2;
+    const my = (wall.y0 + wall.y1) / 2;
+    return Math.hypot(mx - 3, my - 2) < 1;
+  });
+
+  // Nothing longer than the pillar is wide may come out of it: a chord of a
+  // 1.2 m circle that is 1 m long would be a line through the pillar.
+  for (const wall of atPillar) {
+    assert.ok(distance(wall) < 0.9,
+      `the pillar became a ${distance(wall).toFixed(2)} m wall`);
+  }
+});
+
+test('nothing is drawn where no beam has been', () => {
+  // Two walls of a corner, with the corner itself never measured: the lines
+  // may not meet in it.
+  const wallPoints = [];
+  for (let t = 1.0; t <= 2.5; t += 0.02) { wallPoints.push([t, 3.0]); }
+  for (let t = 1.0; t <= 2.5; t += 0.02) { wallPoints.push([3.0, t]); }
+
+  const scan = (x, y) => ({
+    x, y, th: 0,
+    pts: wallPoints.map(([px, py]) => {
+      const angle = Math.atan2(py - y, px - x) * 180 / Math.PI;
+      return [((angle % 360) + 360) % 360, Math.round(Math.hypot(px - x, py - y) * 1000)];
+    }).sort((a, b) => a[0] - b[0]),
+  });
+
+  const { walls } = build([scan(1.6, 1.6), scan(1.5, 1.5), scan(1.7, 1.7)]);
+
+  for (const wall of walls) {
+    for (const [x, y] of [[wall.x0, wall.y0], [wall.x1, wall.y1]]) {
+      // The corner at (3.0, 3.0) was never seen; no line may reach into it.
+      assert.ok(!(x > 2.7 && y > 2.7),
+        `a line runs into the corner nobody measured: ${x.toFixed(2)}, ${y.toFixed(2)}`);
+    }
+  }
+});
+
+test('the main direction is measured, not assumed', () => {
+  // The same room, turned by 20 degrees - the dock does not stand square to
+  // the flat, and the map has to follow the flat.
+  const turn = 20 * Math.PI / 180;
+  const rotated = (px, py) => {
+    const x = px * Math.cos(-turn) - py * Math.sin(-turn);
+    const y = px * Math.sin(-turn) + py * Math.cos(-turn);
+    return room(x, y);
+  };
+  const at = (x, y) => [x * Math.cos(turn) - y * Math.sin(turn), x * Math.sin(turn) + y * Math.cos(turn)];
+
+  const scans = [look(...at(3, 2), rotated), look(...at(1.5, 1), rotated), look(...at(4.5, 3), rotated)];
+  const { walls, direction } = build(scans);
+
+  const degrees = (direction * 180 / Math.PI) % 90;
+  assert.ok(Math.min(Math.abs(degrees - 20), Math.abs(degrees - 20 + 90)) < 3,
+    `main direction ${degrees.toFixed(1)} degrees, expected 20`);
+
+  // And the walls still meet at right angles, just not at 0 and 90.
+  const long = walls.filter(wall => distance(wall) > 2);
+  assert.equal(long.length, 4);
+});
+
+test('the pieces carry their points, within the tolerance', () => {
+  const text = readFileSync(here('fixtures/reference-track-botvac-d6.jsonl'), 'utf8');
+  const { scans } = parseSession(text);
+  const tolerance = 0.04;
+  const support = 0.35;
+  const { walls, grid, cells } = build(scans, { tolerance, support });
+
+  assert.ok(walls.length > 10, `only ${walls.length} segments`);
+  assert.ok(walls.length < 80, `${walls.length} segments is not simpler than cells`);
+
+  // Fewer pieces than the grid needs cells, and every one of them sits on
+  // cells the grid calls wall - that is what supported() promises.
+  const wallCells = cells.walls.reduce((sum, [, , run]) => sum + run, 0);
+  assert.ok(walls.length < wallCells / 4,
+    `${walls.length} segments for ${wallCells} wall cells`);
+
+  for (const wall of walls) {
+    const steps = Math.max(2, Math.ceil(distance(wall) / (grid.cell / 2)));
+    let backed = 0;
+    const test = wallTest(grid, 0.25, 2);
+    for (let i = 0; i <= steps; i++) {
+      const x = wall.x0 + (wall.x1 - wall.x0) * (i / steps);
+      const y = wall.y0 + (wall.y1 - wall.y0) * (i / steps);
+      const ix = Math.floor(x / grid.cell) - grid.x0;
+      const iy = Math.floor(y / grid.cell) - grid.y0;
+      if (ix >= 0 && iy >= 0 && ix < grid.width && iy < grid.height && test.isWall(ix, iy)) {
+        backed++;
+      }
+    }
+    assert.ok(backed / (steps + 1) >= support,
+      `a segment of ${distance(wall).toFixed(2)} m runs over cells the grid calls free`);
+  }
+});
+
+test('turning the simplification off gives the cells back', () => {
+  const scans = [look(3, 2, room), look(1.5, 1, room)];
+  const grid = occupancy(scans, 0.10);
+  const cells = classify(grid, 0.25, 2);
+
+  assert.ok(cells.walls.length > 0);
+  // classify() is untouched by any of this - the cells are still the
+  // evidence, and the lines are drawn on top of them.
+  const { walls } = wallLines(scans, grid, wallTest(grid, 0.25, 2), { snapDegrees: 0 });
+  assert.ok(walls.length > 0);
+});
+
+test('a run without scans has no walls and does not throw', () => {
+  const grid = occupancy([], 0.10);
+  const { walls, direction } = wallLines([], grid, wallTest(grid), {});
+  assert.deepEqual(walls, []);
+  assert.equal(Number.isFinite(direction), true);
+});
+
+test('mainDirection weighs by length', () => {
+  const piece = (angle, length) => ({ angle: angle * Math.PI / 180, length });
+  // One long wall at 30 degrees, three short ones scattered.
+  const direction = mainDirection([piece(30, 6), piece(70, 0.4), piece(12, 0.3), piece(51, 0.2)]);
+  assert.equal(Math.round(direction * 180 / Math.PI), 30);
+});

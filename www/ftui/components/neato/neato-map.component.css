@@ -71,6 +71,15 @@
 
 .free { fill: var(--map-free); opacity: var(--neato-map-free-opacity, 0.16); }
 .wall { fill: var(--map-wall); }
+
+/* Walls drawn as lines. The stroke does not scale with the map, so a wall is
+   as thick in a small tile as in a large one. */
+.walls line {
+  stroke: var(--map-wall);
+  stroke-width: var(--neato-map-wall-width, 3);
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
 .points { fill: var(--map-point); opacity: 0.75; }
 
 .track {

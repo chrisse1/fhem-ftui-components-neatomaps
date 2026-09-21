@@ -43,6 +43,13 @@
                       files="Staubsauger-2026-09-20_11-59-11.jsonl,Staubsauger-2026-09-19_09-30-00.jsonl,Staubsauger-2026-09-18_14-05-00.jsonl"></ftui-neato-map>
     </ftui-grid-tile>
 
+    <!-- Die Waende als Gitterzellen statt als Linien: die rohe Evidenz. -->
+    <ftui-grid-tile id="celled" row="5" col="7" width="2" height="2">
+      <ftui-grid-header>Zellen</ftui-grid-header>
+      <ftui-neato-map id="map-celled" walls="cells" show-info="false"
+                      file="Staubsauger-2026-09-20_11-59-11.jsonl"></ftui-neato-map>
+    </ftui-grid-tile>
+
     <!-- Eigene Farben, damit der Screenshot zeigt, was die Attribute tun. -->
     <ftui-grid-tile id="painted" row="5" col="4" width="3" height="2">
       <ftui-neato-map id="map-painted"

@@ -22,6 +22,7 @@
 import { FtuiElement } from '../element.component.js';
 import { isNumeric } from '../../modules/ftui/ftui.helper.js';
 import * as track from './neato-track.js';
+import { wallLines, wallTest } from './neato-walls.js';
 
 /*
 * Attributes that are nothing but a CSS custom property on the element.
@@ -141,10 +142,17 @@ export class FtuiNeatoMap extends FtuiElement {
       trackFile: '',
       state: '',
       // how the map is computed - see docs/ftui3-map.md
-      cell: 0.05,
+      cell: 0.10,
       threshold: 0.25,
       minSeen: 2,
       pad: 0.4,
+      // 'lines' draws the walls as the straight pieces they are, 'cells' as
+      // the grid cells the evidence marks.
+      walls: 'lines',
+      lineTolerance: 0.04,
+      joinGap: 0.8,
+      minWall: 0.4,
+      snapAngle: 8,
       // how it looks
       showTrack: true,
       showPoints: false,
@@ -251,6 +259,11 @@ export class FtuiNeatoMap extends FtuiElement {
       case 'cell':
       case 'threshold':
       case 'min-seen':
+      case 'walls':
+      case 'line-tolerance':
+      case 'join-gap':
+      case 'min-wall':
+      case 'snap-angle':
         this.view = null;
         this.requestUpdate({});
         break;
@@ -658,21 +671,18 @@ export class FtuiNeatoMap extends FtuiElement {
 
     if (this.showPoints) {
       parts.push(this.pointsPath(view, sx, sy, Math.max(width, height)));
+    } else if (view.lines) {
+      parts.push(`<g class="free">${this.cellRects(view.cells.free, view, sx, sy)}</g>`);
+      const out = ['<g class="walls">'];
+      for (const wall of view.lines) {
+        out.push(`<line x1="${sx(wall.x0)}" y1="${sy(wall.y0)}"`
+          + ` x2="${sx(wall.x1)}" y2="${sy(wall.y1)}"/>`);
+      }
+      out.push('</g>');
+      parts.push(out.join(''));
     } else {
-      const cell = view.grid.cell;
-      const rects = (runs, className) => {
-        const out = [`<g class="${className}">`];
-        // A hair of overlap: neighbouring rectangles otherwise show the
-        // background between them at some zoom levels.
-        const bleed = cell * 0.04;
-        for (let i = 0; i < runs.length; i++) {
-          const [ix, iy, run] = runs[i];
-          out.push(`<rect x="${sx((ix + view.grid.x0) * cell)}" y="${sy((iy + view.grid.y0 + 1) * cell)}"`
-            + ` width="${(run * cell + bleed).toFixed(3)}" height="${(cell + bleed).toFixed(3)}"/>`);
-        }
-        out.push('</g>');
-        return out.join('');
-      };
+      const rects = (runs, className) =>
+        `<g class="${className}">${this.cellRects(runs, view, sx, sy)}</g>`;
       parts.push(rects(view.cells.free, 'free'));
       parts.push(rects(view.cells.walls, 'wall'));
     }
@@ -697,6 +707,23 @@ export class FtuiNeatoMap extends FtuiElement {
 
     parts.push('</svg>');
     return parts.join('');
+  }
+
+  /** Row runs as rectangles, in metres. */
+  cellRects(runs, view, sx, sy) {
+    const cell = view.grid.cell;
+    // A hair of overlap: neighbouring rectangles otherwise show the
+    // background between them at some zoom levels.
+    const bleed = cell * 0.04;
+    const out = [];
+
+    for (let i = 0; i < runs.length; i++) {
+      const [ix, iy, run] = runs[i];
+      out.push(`<rect x="${sx((ix + view.grid.x0) * cell)}" y="${sy((iy + view.grid.y0 + 1) * cell)}"`
+        + ` width="${(run * cell + bleed).toFixed(3)}" height="${(cell + bleed).toFixed(3)}"/>`);
+    }
+
+    return out.join('');
   }
 
   pointsPath(view, sx, sy, extent) {
@@ -758,9 +785,25 @@ export class FtuiNeatoMap extends FtuiElement {
     if (this.showPoints || this.view.grid) {
       return;
     }
-    const cell = Number(this.cell) > 0 ? Number(this.cell) : 0.05;
+
+    const cell = Number(this.cell) > 0 ? Number(this.cell) : 0.10;
+    const threshold = Number(this.threshold);
+    const seen = Number(this.minSeen);
+
     this.view.grid = track.occupancy(this.session.scans, cell, this.view.points);
-    this.view.cells = track.classify(this.view.grid, Number(this.threshold), Number(this.minSeen));
+    this.view.cells = track.classify(this.view.grid, threshold, seen);
+
+    if (this.walls === 'lines') {
+      const { walls, direction } = wallLines(this.session.scans, this.view.grid,
+        wallTest(this.view.grid, threshold, seen), {
+          tolerance: Number(this.lineTolerance),
+          gap: Number(this.joinGap),
+          minLength: Number(this.minWall),
+          snapDegrees: Number(this.snapAngle),
+        });
+      this.view.lines = walls;
+      this.view.direction = direction;
+    }
   }
 }
 
