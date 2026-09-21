@@ -86,11 +86,25 @@ for (const rejected of plan.rejected) {
   process.stdout.write(`  abgelehnt: ${names[rejected.index]} (Guete ${(rejected.score * 100).toFixed(0)} %)\n`);
 }
 
+// Every run with the score it reached, fitted or not. The threshold below
+// which a run is dropped is an assumption, not a measurement - see
+// docs/plan-format.md - and this is the only place the evidence to settle it
+// can accumulate.
+const scores = [...plan.placements.map(placement => ({ ...placement, used: true })),
+  ...plan.rejected.map(rejected => ({ ...rejected, used: false }))]
+  .map(entry => ({
+    file: names[entry.index],
+    score: Number(entry.score.toFixed(3)),
+    used: entry.used,
+  }))
+  .sort((a, b) => b.score - a.score);
+
 const body = JSON.stringify({
   cell,
   runs: plan.runs,
   built: new Date().toISOString(),
   files: plan.placements.map(placement => names[placement.index]),
+  scores,
   cells: plan.cells.map(spot => [
     Math.round(spot.x / cell), Math.round(spot.y / cell), spot.walls, spot.seen,
   ]),
@@ -98,3 +112,9 @@ const body = JSON.stringify({
 
 writeFileSync(out, body);
 process.stdout.write(`${out}: ${(body.length / 1024).toFixed(0)} kB\n`);
+
+process.stdout.write('\nGuete je Lauf:\n');
+for (const entry of scores) {
+  process.stdout.write(`  ${entry.score.toFixed(2)}  ${entry.used ? 'dabei   ' : 'abgelehnt'}`
+    + `  ${entry.file}\n`);
+}

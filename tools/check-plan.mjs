@@ -53,6 +53,10 @@ if (!path) {
   process.exit(2);
 }
 
+// Piping into head closes the pipe under us; that is the reader's business,
+// not an error worth a stack trace.
+process.stdout.on('error', () => {});
+
 const problems = [];
 const notes = [];
 
@@ -133,7 +137,17 @@ function inspect(raw, what) {
     return null;
   }
 
-  return { cell: Number(raw.cell), runs, cells };
+  // Optional, and only as good as whoever wrote it - so it is read leniently
+  // and never used to reject a file.
+  const scores = (Array.isArray(raw.scores) ? raw.scores : [])
+    .filter(entry => entry && Number.isFinite(Number(entry.score)))
+    .map(entry => ({
+      file: String(entry.file || '?'),
+      score: Number(entry.score),
+      used: entry.used !== false,
+    }));
+
+  return { cell: Number(raw.cell), runs, cells, scores };
 }
 
 const mine = inspect(JSON.parse(readFileSync(path, 'utf8')), path);
@@ -153,6 +167,7 @@ function build(dir) {
   return {
     cell: plan.cell,
     runs: plan.runs,
+    scores: [],
     cells: plan.cells.map(spot => ({
       ix: Math.round(spot.x / plan.cell),
       iy: Math.round(spot.y / plan.cell),
@@ -183,6 +198,23 @@ if (!mine) {
 
 process.stdout.write(`\n${path}: ${mine.cells.length} Zellen, ${mine.runs} Laeufe,`
   + ` Zelle ${mine.cell} m, ${(mine.cells.length * mine.cell * mine.cell).toFixed(1)} m2 Wand\n`);
+
+// The optional scores: the evidence for where the threshold belongs. Printed
+// rather than judged - two data points pointing opposite ways are not a rule.
+if (mine.scores.length) {
+  process.stdout.write('\nGuete je Lauf:\n');
+  for (const entry of mine.scores) {
+    process.stdout.write(`  ${entry.score.toFixed(2)}  ${entry.used ? 'dabei   ' : 'abgelehnt'}`
+      + `  ${entry.file}\n`);
+  }
+  const lowest = mine.scores.filter(entry => entry.used).map(entry => entry.score);
+  const highest = mine.scores.filter(entry => !entry.used).map(entry => entry.score);
+  if (lowest.length && highest.length) {
+    process.stdout.write(`  schlechtester dabei ${Math.min(...lowest).toFixed(2)},`
+      + ` bester abgelehnt ${Math.max(...highest).toFixed(2)}`
+      + `${Math.max(...highest) > Math.min(...lowest) ? ' - die Schwelle trennt nicht' : ''}\n`);
+  }
+}
 
 if (!theirs) {
   process.stdout.write(problems.length ? '\nForm fehlerhaft.\n' : '\nForm in Ordnung. Zum Vergleichen --against oder --runs angeben.\n');

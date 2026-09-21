@@ -2,6 +2,16 @@
 # Leerzeile an - neue Eintraege gehoeren also nach oben, und zwischen den
 # Bloecken steht genau eine Leerzeile. Eine Leerzeile direkt hier waere das
 # Ende der Anzeige, bevor sie angefangen hat.
+2026-09-21 ftui-neato-map 1.12.0
+ - die Plandatei kann ein Feld "scores" tragen: die Guete je Lauf, auch der
+   abgelehnten. Die Schwelle, unter der ein Lauf verworfen wird, ist eine
+   Annahme und keine Messung - das ist die Stelle, an der sich die Zahlen
+   sammeln, die das entscheiden
+ - tools/make-plan.mjs schreibt es, tools/check-plan.mjs gibt es aus und
+   sagt, wenn die schlechteste angenommene Guete unter der besten
+   abgelehnten liegt - dann trennt die Schwelle nicht
+ - optional; fehlt es, ist das kein Fehler
+
 2026-09-21 ftui-neato-map 1.11.0
  - plan-file vertraegt ein gebundenes Reading:
    [plan-file]="Staubsauger:planFile". Das Modul rechnet den Grundriss seit

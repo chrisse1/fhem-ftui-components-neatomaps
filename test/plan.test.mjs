@@ -293,6 +293,17 @@ test('the reference case in test/fixtures/plan still is what it says it is', () 
   assert.ok(found / built.cells.length > 0.95,
     `only ${(100 * found / built.cells.length).toFixed(1)} % of the cells are where the file says`);
 
+  // The scores of every run, which is what the threshold question needs.
+  assert.equal(stored.scores.length, 3, 'a run lost its score');
+  for (const entry of stored.scores) {
+    assert.ok(names.includes(entry.file), `${entry.file} is not one of the recordings`);
+    assert.ok(entry.score > 0 && entry.score <= 1, `score ${entry.score}`);
+    assert.equal(typeof entry.used, 'boolean');
+  }
+  assert.equal(stored.scores.filter(entry => entry.used).length, stored.runs);
+  assert.equal(Math.max(...stored.scores.map(entry => entry.score)), 1,
+    'the frame run scores 1 by definition');
+
   // And every cell in the file obeys the format the other side implements.
   for (const [ix, iy, walls, seen] of stored.cells) {
     assert.ok(Number.isInteger(ix) && Number.isInteger(iy), 'cells are indices, not metres');

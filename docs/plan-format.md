@@ -56,6 +56,7 @@ Konvention. FHEMWEB liefert sie ohne weiteres Zutun aus, genau wie die
 | `cells` | Pflicht | Die Zellen, siehe unten. |
 | `built` | optional | Wann gerechnet, ISO 8601. Nur zur Anzeige und Fehlersuche. |
 | `files` | optional | Welche Aufzeichnungen eingegangen sind, in der Reihenfolge des Einpassens. Die erste ist der Rahmen. |
+| `scores` | optional | Güte je Lauf, **auch der abgelehnten**. Siehe unten. |
 
 Jede Zelle ist ein Array aus vier Ganzzahlen:
 
@@ -79,6 +80,30 @@ der wichtigste. Ohne ihn lässt sich nicht unterscheiden zwischen
 
 Ein Lauf, der nie in dem Raum war, darf nicht mitstimmen. Genau das drückt
 `seen` aus.
+
+### `scores`: die Beweise für die Schwelle
+
+```json
+"scores": [
+  { "file": "Staubsauger-2026-09-21_10-00-19.jsonl", "score": 1.0,  "used": true  },
+  { "file": "Staubsauger-2026-09-20_11-27-11.jsonl", "score": 0.68, "used": true  },
+  { "file": "Staubsauger-2026-09-18_14-05-00.jsonl", "score": 0.33, "used": false }
+]
+```
+
+Optional, und die Anzeige braucht es nicht. Es steht hier, weil die Schwelle,
+unter der ein Lauf verworfen wird, eine Annahme ist und keine Messung – siehe
+Schritt 6 des Verfahrens – und weil das die einzige Stelle ist, an der sich die
+Zahlen sammeln können, die das entscheiden.
+
+Wer es schreibt: **alle** Läufe, die angeboten wurden, nicht nur die
+angenommenen. `score` ist die erreichte Güte (0 bis 1), `used` ob der Lauf im
+Plan steckt. Der Rahmenlauf hat 1,0. `tools/check-plan.mjs` gibt die Liste aus
+und sagt, ob die schlechteste angenommene Güte über der besten abgelehnten
+liegt – trennt die Schwelle nicht, steht es da.
+
+Fehlt das Feld, ist das kein Fehler; es wird nie zum Ablehnen einer Datei
+benutzt und nachsichtig gelesen.
 
 ### Wo der Nullpunkt liegt
 

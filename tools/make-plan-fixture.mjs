@@ -136,6 +136,14 @@ writeFileSync(`${dir}plan.json`, JSON.stringify({
   cell: plan.cell,
   runs: plan.runs,
   files: plan.placements.map(placement => `${MOVES[placement.index].name}.jsonl`),
+  scores: [...plan.placements.map(p => ({ ...p, used: true })),
+    ...plan.rejected.map(p => ({ ...p, used: false }))]
+    .map(entry => ({
+      file: `${MOVES[entry.index].name}.jsonl`,
+      score: Number(entry.score.toFixed(3)),
+      used: entry.used,
+    }))
+    .sort((a, b) => b.score - a.score),
   cells: plan.cells.map(spot => [
     Math.round(spot.x / plan.cell), Math.round(spot.y / plan.cell), spot.walls, spot.seen,
   ]),
