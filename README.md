@@ -92,6 +92,11 @@ Solange `state` auf `cleaning` steht, wird die laufende Aufzeichnung alle
 
 | Attribut | Standard | Bedeutung |
 |---|---|---|
+| `view` | – | Leer zeigt eine Aufzeichnung, `plan` den gemeinsamen Grundriss aus mehreren. |
+| `plan-file` | – | Fertiger Grundriss neben den Aufzeichnungen, z. B. `plan-Staubsauger.json`. Ohne den wird im Browser gerechnet – siehe unten, warum das ab einer Handvoll Läufen keine gute Idee ist. |
+| `plan-runs` | `4` | Wie viele der neuesten Läufe in einen selbst gerechneten Grundriss eingehen. |
+| `plan-agree` | `0.5` | Welcher Anteil der Läufe, die hingesehen haben, eine Zelle Wand nennen muss. |
+| `show-disputed` | an | Zellen zeichnen, die ein Lauf Wand nennt und die anderen Boden. |
 | `device` | – | Name des NeatoLocal-Geräts. Bestimmt, welche Dateien aufgelistet werden. |
 | `dir` | aus `track-dir` | URL-Verzeichnis der Sitzungsdateien. Leer heißt: aus dem letzten Teil von `track-dir` und der FHEMWEB-Adresse bilden, also `/fhem/neato/`. Nur setzen, wenn die Dateien woanders ausgeliefert werden. |
 | `track-dir` | `./www/neato` | Dasselbe Verzeichnis, wie FHEM es sieht – nur für die Dateiliste. Entspricht dem Attribut `trackDir` des Geräts. |
@@ -141,6 +146,7 @@ Solange `state` auf `cleaning` steht, wird die laufende Aufzeichnung alle
 | `end-color` | `danger` | Punkt am Ende – und der Punkt für den Roboter, solange er fährt. |
 | `missed-color` | `danger` | Farbe der Schraffur über dem ausgelassenen Boden. |
 | `stuck-color` | `danger` | Farbe des Rings um eine Stelle, an der er stehen blieb. |
+| `disputed-color` | `danger` | Farbe der strittigen Zellen im Grundriss. |
 | `text-color` | `light` | Farbe der Zeile und der Pfeile. |
 | `background-color` | durchsichtig | Untergrund der Kartenfläche; ohne Angabe scheint die Kachel durch. |
 | `locale` | Seitensprache | `de` oder `en`, für Datum und die wenigen Texte. |
@@ -331,9 +337,17 @@ Standard mit 26 Linien.
 
 ## Mehrere Läufe als ein Grundriss
 
-`neato-plan.js` legt mehrere Aufzeichnungen übereinander. Das ist noch **nicht**
-in der Komponente verdrahtet – die Rechnung steht, die Anzeige kommt als
-Nächstes.
+```html
+<ftui-neato-map device="Staubsauger" view="plan"
+                plan-file="plan-Staubsauger.json"></ftui-neato-map>
+```
+
+Drei Arten Zelle, und der Unterschied zwischen ihnen ist der ganze Grund,
+mehrere Läufe zu nehmen: worauf sie sich einigen (voll gezeichnet), was nur
+einer je gesehen hat (blass – niemand widerspricht, niemand bestätigt), und was
+einer Wand nennt, während die anderen hinsahen und Boden fanden (eigene Farbe).
+Die Zeile darunter nennt die Zahl der Läufe, die sichere Wandfläche und wie
+viele Zellen strittig sind.
 
 Ein einzelner Lauf ist die Karte *dieses Laufs*: eigener Nullpunkt, eigene
 Nordrichtung, und er kennt nur die Räume, in die der Roboter an dem Tag kam.
@@ -370,6 +384,44 @@ einig. Die Abstimmung ist nur so unabhängig wie die Läufe.
 
 Ein Lauf, der nicht passt, wird **abgelehnt** statt hineingebogen – eine andere
 Etage in denselben Rahmen zu zwingen zieht Wände quer durch Räume.
+
+### Wo der Grundriss gerechnet wird
+
+Ohne `plan-file` rechnet die Komponente ihn selbst, aus den neuesten
+`plan-runs` Aufzeichnungen. Für drei oder vier geht das. Darüber hinaus nicht
+mehr, und das sagen Zahlen statt eines Gefühls – in Chromium gemessen, mit
+gedrosselter CPU für ein Tablet:
+
+| | |
+|---|---|
+| drei Läufe laden, lesen, aufnehmen, zusammenlegen | 1,2 s – auf Tablet-Tempo **5,2 s** |
+| dabei heruntergeladen | 2,0 MB |
+| zehn Läufe à 1 Stunde bei `mapInterval 15` | etwa **5,5 MB** |
+| derselbe Grundriss als fertige Datei | 33 kB, **7 kB** gzip |
+
+Ein Panel, das den Grundriss zeigt, sollte also die Antwort laden, nicht die
+Frage. Die schreibt:
+
+```sh
+node tools/make-plan.mjs /opt/fhem/www/neato Staubsauger --runs 8
+```
+
+Heraus kommt `plan-Staubsauger.json` neben den Aufzeichnungen, und FHEMWEB
+liefert sie genauso aus wie diese:
+
+```json
+{ "cell": 0.1, "runs": 3, "built": "…", "cells": [[ix, iy, walls, seen], …] }
+```
+
+Zellindizes statt Metern, weil sie das sind und die Datei klein bleibt.
+`walls` ist, wie viele Läufe die Zelle Wand nennen, `seen`, wie viele
+überhaupt hingesehen haben – beides braucht die Anzeige, um eine Wand, der
+niemand widerspricht, von einer zu unterscheiden, die alle bestätigen.
+
+**Dieses Dateiformat ist die Naht.** Wer den Grundriss rechnet, ist dahinter
+austauschbar: dieses Werkzeug, ein Aufruf aus FHEM heraus, oder eines Tages
+das Modul selbst. Die Komponente zeichnet nur noch. Ein Browser-Test hält
+beide Wege gegeneinander und besteht nur, wenn dasselbe Bild herauskommt.
 
 ## Wie der Lauf gelaufen ist
 
@@ -480,6 +532,7 @@ gefahren, dann stehen geblieben:
 
 ```sh
 node tools/make-room-fixture.mjs       # schreibt test/fixtures/room-run.jsonl
+node tools/make-plan.mjs <verz> <geraet>   # schreibt plan-<geraet>.json
 ```
 
 `controls_neatomaps.txt` nennt Größe und Zeitstempel jeder Datei, und FHEM

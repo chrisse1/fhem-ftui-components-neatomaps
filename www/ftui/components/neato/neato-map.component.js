@@ -25,6 +25,7 @@ import * as track from './neato-track.js';
 import { wallLines, wallTest } from './neato-walls.js';
 import { alignScans } from './neato-align.js';
 import { countMissed, trackIsDense, standstills } from './neato-run.js';
+import { survey, mergePlan } from './neato-plan.js';
 
 /*
 * Attributes that are nothing but a CSS custom property on the element.
@@ -47,6 +48,7 @@ const STYLE_ATTRIBUTES = {
   'background-color': ['--neato-map-background', 'color'],
   'missed-color': ['--neato-map-missed-color', 'color'],
   'stuck-color': ['--neato-map-stuck-color', 'color'],
+  'disputed-color': ['--neato-map-disputed-color', 'color'],
   'free-opacity': ['--neato-map-free-opacity', 'plain'],
 };
 
@@ -64,6 +66,11 @@ const TEXTS = {
     metres: 'm',
     covered: 'Abdeckung %s %',
     still: '%s s gestanden',
+    plan: 'Grundriss',
+    building: 'Grundriss wird gerechnet …',
+    runs: '%s Läufe',
+    oneRun: 'ein Lauf',
+    noPlan: 'Kein Grundriss - keine Aufzeichnung gefunden',
   },
   en: {
     loading: 'Loading map …',
@@ -78,6 +85,11 @@ const TEXTS = {
     metres: 'm',
     covered: '%s % covered',
     still: 'stood still for %s s',
+    plan: 'Floor plan',
+    building: 'Building the floor plan …',
+    runs: '%s runs',
+    oneRun: 'one run',
+    noPlan: 'No floor plan - no recording found',
   },
 };
 
@@ -100,7 +112,9 @@ export class FtuiNeatoMap extends FtuiElement {
     this.sessions = [];          // file names, newest first
     this.loadedName = '';        // what this.session was read from
     this.session = null;         // the parsed session on display
-    this.view = null;            // points and grid of that session, cached
+    // Points, grid and lines of the loaded session, kept until it changes.
+    // Not called 'view' - that is the attribute which picks run or plan.
+    this.drawing = null;
     this.note = '';              // shown instead of a map
     this.listFailed = false;
     this.derivedDir = '';      // where the files are served, once worked out
@@ -121,7 +135,8 @@ export class FtuiNeatoMap extends FtuiElement {
     // it is not touched - this is a redraw, not a reload.
     // FTUI's debounce takes the delay at call time, not here.
     this.onStageResized = debounce(() => {
-      if (String(this.rotate).toLowerCase() === 'auto' && this.session && !this.note) {
+      if (String(this.rotate).toLowerCase() === 'auto' && !this.note
+        && (this.session || (this.isPlan && this.plan))) {
         this.render();
       }
     }, this);
@@ -188,6 +203,21 @@ export class FtuiNeatoMap extends FtuiElement {
       showPoints: false,
       showInfo: true,
       showControls: true,
+      // '' or 'run' shows one recording, 'plan' the floor plan several of
+      // them make together - see neato-plan.js.
+      view: '',
+      // A ready made plan, next to the recordings. Without one the plan is
+      // computed here, which costs real time: measured on a throttled tablet,
+      // 5 s for three runs, and it grows with every run. Anything beyond a
+      // handful belongs in a file somebody else wrote.
+      planFile: '',
+      planRuns: 4,
+      // How many of the runs that looked have to agree before a cell counts
+      // as a wall.
+      planAgree: 0.5,
+      // Cells one run calls a wall while the others saw floor: furniture,
+      // people, a door that was open the other time.
+      showDisputed: true,
       // What the brush never went over, hatched, plus the share it did cover
       // in the line below. Off by default: it is an interpretation of the
       // track, not a measurement, and on a thinned recording it says nothing.
@@ -218,6 +248,7 @@ export class FtuiNeatoMap extends FtuiElement {
       endColor: '',
       missedColor: '',
       stuckColor: '',
+      disputedColor: '',
       textColor: '',
       backgroundColor: '',
       locale: '',
@@ -311,6 +342,12 @@ export class FtuiNeatoMap extends FtuiElement {
       case 'index':
         this.requestUpdate({});
         break;
+      case 'view':
+      case 'plan-file':
+      case 'plan-runs':
+        this.plan = null;
+        this.requestUpdate({ list: true });
+        break;
       case 'cell':
       case 'threshold':
       case 'min-seen':
@@ -327,9 +364,11 @@ export class FtuiNeatoMap extends FtuiElement {
       case 'snap-angle':
       case 'show-missed':
       case 'brush-width':
-        this.view = null;
+        this.drawing = null;
         this.requestUpdate({});
         break;
+      case 'plan-agree':
+      case 'show-disputed':
       case 'rotate':
       case 'dot-size':
       case 'pad':
@@ -427,6 +466,11 @@ export class FtuiNeatoMap extends FtuiElement {
         }
       }
 
+      if (this.isPlan) {
+        await this.loadPlan();
+        return;
+      }
+
       const count = this.sessions.length;
       const index = Math.min(Math.max(this.index, 0), Math.max(count - 1, 0));
       if (index !== this.index) {
@@ -451,6 +495,98 @@ export class FtuiNeatoMap extends FtuiElement {
       this.render();
       this.startPolling();
     }
+  }
+
+  get isPlan() {
+    return String(this.view || '').trim().toLowerCase() === 'plan';
+  }
+
+  /**
+   * The floor plan several runs make together.
+   *
+   * Either a file somebody prepared - which is what more than a handful of
+   * runs needs, see the README - or computed here from the newest recordings.
+   * Computing means loading every one of them: about 0.5 MB per hour of
+   * recording at mapInterval 15, against 7 kB for a finished plan.
+   *
+   * The result is kept. Nothing about it changes while the page is open
+   * unless a new recording turns up.
+   */
+  async loadPlan() {
+    const names = this.sessions.slice(0, Math.max(1, Number(this.planRuns)));
+    const wanted = this.planFile ? `file:${this.planFile}` : names.join(',');
+
+    if (this.plan && this.planKey === wanted) {
+      this.note = '';
+      return;
+    }
+
+    if (this.planFile) {
+      this.plan = this.readPlan(await this.fetchJson(this.planFile));
+      this.planKey = wanted;
+      this.note = this.plan.cells.length ? '' : this.texts.noPlan;
+      return;
+    }
+
+    if (!names.length) {
+      this.plan = null;
+      this.note = this.listFailed ? this.texts.noList : this.texts.noPlan;
+      return;
+    }
+
+    this.note = this.texts.building;
+    this.render();
+
+    const surveys = [];
+    for (const name of names) {
+      const response = await fetch(await this.url(name), { credentials: 'same-origin' });
+      if (!response.ok) {
+        continue;                              // a run that has gone is not fatal
+      }
+      surveys.push(survey(track.parseSession(await response.text()), { cell: this.gridCell }));
+      // Let the page breathe between runs: one of these takes the best part
+      // of a second on a tablet, and a frozen panel is worse than a slow one.
+      await new Promise(done => setTimeout(done, 0));
+    }
+
+    this.plan = mergePlan(surveys, { cell: this.gridCell });
+    this.planKey = wanted;
+    this.session = null;
+    this.loadedName = '';
+    this.note = this.plan.cells.length ? '' : this.texts.noPlan;
+    this.emitEvent('planBuilt', { runs: this.plan.runs, cells: this.plan.cells.length });
+  }
+
+  async fetchJson(name) {
+    const response = await fetch((await this.baseUrl()) + encodeURIComponent(name),
+      { credentials: 'same-origin' });
+    if (!response.ok) {
+      throw new Error(`${response.status} ${response.statusText} for ${name}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * A prepared plan, as tools/make-plan.mjs writes it.
+   *
+   *   { "cell": 0.1, "runs": 3, "cells": [[ix, iy, walls, seen], ...] }
+   *
+   * Cell indices rather than metres, because that is what they are and it
+   * keeps the file small - 7 kB gzipped for a whole flat.
+   */
+  readPlan(raw) {
+    const cell = Number(raw && raw.cell) > 0 ? Number(raw.cell) : this.gridCell;
+    const cells = (raw && Array.isArray(raw.cells) ? raw.cells : []).map(entry => ({
+      x: entry[0] * cell,
+      y: entry[1] * cell,
+      walls: entry[2],
+      seen: entry[3] === undefined ? entry[2] : entry[3],
+    }));
+    return { cells, cell, runs: Number(raw && raw.runs) || 0, placements: [], rejected: [] };
+  }
+
+  get gridCell() {
+    return Number(this.cell) > 0 ? Number(this.cell) : 0.10;
   }
 
   /** The recordings to page through, newest first. */
@@ -505,7 +641,7 @@ export class FtuiNeatoMap extends FtuiElement {
 
     this.session = track.parseSession(await response.text());
     this.loadedName = name;
-    this.view = null;
+    this.drawing = null;
     this.note = (this.session.scans.length || this.session.poses.length) ? '' : this.texts.empty;
     this.emitEvent('sessionLoaded', { name, session: this.session });
   }
@@ -672,7 +808,16 @@ export class FtuiNeatoMap extends FtuiElement {
     }
     this.noteElement.textContent = this.note;
 
-    if (!this.session || this.note) {
+    if (this.note) {
+      return;
+    }
+    if (this.isPlan) {
+      if (this.plan && this.plan.cells.length) {
+        this.stage.insertAdjacentHTML('beforeend', this.planSvg());
+      }
+      return;
+    }
+    if (!this.session) {
       return;
     }
 
@@ -680,6 +825,10 @@ export class FtuiNeatoMap extends FtuiElement {
   }
 
   renderBar() {
+    if (this.isPlan) {
+      this.renderPlanBar();
+      return;
+    }
     const count = this.sessions.length;
     const parsed = track.parseFileName(this.loadedName);
     const info = this.session ? track.stats(this.session) : null;
@@ -713,6 +862,97 @@ export class FtuiNeatoMap extends FtuiElement {
 
     this.subElement.innerHTML = (info && info.running ? `<i class="live" title="${texts.running}"></i>` : '')
       + parts.join(' · ').replace(/[<>&]/g, '');
+  }
+
+  renderPlanBar() {
+    const texts = this.texts;
+    this.newerButton.disabled = true;
+    this.olderButton.disabled = true;
+    this.titleElement.textContent = texts.plan;
+
+    const plan = this.plan;
+    const parts = [];
+    if (plan && plan.cells.length) {
+      parts.push(plan.runs === 1 ? texts.oneRun : texts.runs.replace('%s', String(plan.runs)));
+      const sure = plan.cells.filter(cell => this.agreed(cell)).length;
+      parts.push(`${(sure * plan.cell * plan.cell).toLocaleString(
+        this.locale || document.documentElement.lang || undefined,
+        { maximumFractionDigits: 1 })} m²`);
+      const quarrel = plan.cells.length - sure;
+      if (quarrel && this.showDisputed) {
+        parts.push(`${quarrel} ?`);
+      }
+    }
+
+    this.subElement.innerHTML = parts.join(' · ').replace(/[<>&]/g, '');
+  }
+
+  /** Whether enough of the runs that looked call this cell a wall. */
+  agreed(cell) {
+    const agree = Number(this.planAgree);
+    return cell.seen > 0 && cell.walls / cell.seen >= (agree >= 0 ? agree : 0.5);
+  }
+
+  /**
+   * The floor plan, drawn as the same squares a single run uses.
+   *
+   * Three kinds, and the difference between them is the whole point of having
+   * several runs: what they agree on, what only one of them ever saw, and what
+   * one calls a wall while the others looked and found floor.
+   */
+  planSvg() {
+    const cell = this.plan.cell;
+    const pad = Number(this.pad) || 0;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const spot of this.plan.cells) {
+      if (spot.x < minX) { minX = spot.x; }
+      if (spot.x > maxX) { maxX = spot.x; }
+      if (spot.y < minY) { minY = spot.y; }
+      if (spot.y > maxY) { maxY = spot.y; }
+    }
+
+    const width = (maxX - minX) + cell + 2 * pad;
+    const height = (maxY - minY) + cell + 2 * pad;
+    const sx = (x) => (x - minX + pad).toFixed(3);
+    const sy = (y) => (maxY - y + pad).toFixed(3);
+
+    const groups = { sure: [], alone: [], quarrel: [] };
+    const size = cell * (Number(this.dotSize) > 0 ? Number(this.dotSize) : 0.72);
+    const inset = (cell - size) / 2;
+
+    for (const spot of this.plan.cells) {
+      const where = this.agreed(spot) ? (spot.seen > 1 ? 'sure' : 'alone') : 'quarrel';
+      if (where === 'quarrel' && !this.showDisputed) {
+        continue;
+      }
+      groups[where].push(`<rect x="${sx(spot.x + inset)}" y="${sy(spot.y + inset + size)}"`
+        + ` width="${size.toFixed(3)}" height="${size.toFixed(3)}"/>`);
+    }
+
+    const turn = this.turned(width, height);
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${turn.width} ${turn.height}"`
+      + ' preserveAspectRatio="xMidYMid meet" shape-rendering="crispEdges">'
+      + `<g${turn.spin}>`
+      + `<g class="plan-alone">${groups.alone.join('')}</g>`
+      + `<g class="plan-sure">${groups.sure.join('')}</g>`
+      + `<g class="plan-quarrel">${groups.quarrel.join('')}</g>`
+      + '</g></svg>';
+  }
+
+  /** View box and transform for a drawing of this size, turned as asked. */
+  turned(width, height) {
+    const turns = this.quarters(width, height);
+    const across = turns % 2 === 1;
+    return {
+      width: (across ? height : width).toFixed(3),
+      height: (across ? width : height).toFixed(3),
+      spin: [
+        '',
+        ` transform="translate(${height.toFixed(3)},0) rotate(90)"`,
+        ` transform="translate(${width.toFixed(3)},${height.toFixed(3)}) rotate(180)"`,
+        ` transform="translate(0,${width.toFixed(3)}) rotate(270)"`,
+      ][turns],
+    };
   }
 
   /**
@@ -764,21 +1004,12 @@ export class FtuiNeatoMap extends FtuiElement {
 
     // A quarter turn swaps the two sides of the view box, and the drawing is
     // turned inside it - the coordinates themselves stay as they are.
-    const turns = this.quarters(width, height);
-    const across = turns % 2 === 1;
-    const boxWidth = across ? height : width;
-    const boxHeight = across ? width : height;
-    const spin = [
-      '',
-      ` transform="translate(${height.toFixed(3)},0) rotate(90)"`,
-      ` transform="translate(${width.toFixed(3)},${height.toFixed(3)}) rotate(180)"`,
-      ` transform="translate(0,${width.toFixed(3)}) rotate(270)"`,
-    ][turns];
+    const turn = this.turned(width, height);
 
     const parts = [
-      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${boxWidth.toFixed(3)} ${boxHeight.toFixed(3)}"`,
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${turn.width} ${turn.height}"`,
       ` preserveAspectRatio="xMidYMid meet" shape-rendering="crispEdges">`,
-      `<g${spin}>`,
+      `<g${turn.spin}>`,
     ];
 
     if (this.showPoints) {
@@ -918,7 +1149,7 @@ export class FtuiNeatoMap extends FtuiElement {
       return null;
     }
     this.prepare();
-    return this.view.missed && trackIsDense(this.view.missed) ? this.view.missed : null;
+    return this.drawing.missed && trackIsDense(this.drawing.missed) ? this.drawing.missed : null;
   }
 
   /** Where he stood still long enough that something was wrong. */
@@ -936,9 +1167,9 @@ export class FtuiNeatoMap extends FtuiElement {
    * another size costs nothing.
    */
   prepare() {
-    if (this.view) {
+    if (this.drawing) {
       this.ensureGrid();
-      return this.view;
+      return this.drawing;
     }
 
     const points = track.allPoints(this.session.scans);
@@ -960,14 +1191,14 @@ export class FtuiNeatoMap extends FtuiElement {
       minX = maxX = minY = maxY = 0;
     }
 
-    this.view = { points, grid: null, cells: null, bounds: { minX, maxX, minY, maxY } };
+    this.drawing = { points, grid: null, cells: null, bounds: { minX, maxX, minY, maxY } };
     this.ensureGrid();
-    return this.view;
+    return this.drawing;
   }
 
   /** The occupancy grid, which the raw endpoints do not need. */
   ensureGrid() {
-    if (this.showPoints || this.view.grid) {
+    if (this.showPoints || this.drawing.grid) {
       return;
     }
 
@@ -983,20 +1214,20 @@ export class FtuiNeatoMap extends FtuiElement {
       ? alignScans(this.session.scans).scans
       : this.session.scans;
 
-    const points = scans === this.session.scans ? this.view.points : track.allPoints(scans);
-    this.view.grid = track.occupancy(scans, cell, points);
-    this.view.cells = track.classify(this.view.grid, threshold, seen);
+    const points = scans === this.session.scans ? this.drawing.points : track.allPoints(scans);
+    this.drawing.grid = track.occupancy(scans, cell, points);
+    this.drawing.cells = track.classify(this.drawing.grid, threshold, seen);
 
     // Which of the free floor the brush never went over. Costs about 10 ms on
     // an hour long run, so it is only done when it is asked for.
     if (this.showMissed) {
-      this.view.missed = countMissed(this.view.grid, this.view.cells, this.session.poses,
+      this.drawing.missed = countMissed(this.drawing.grid, this.drawing.cells, this.session.poses,
         { width: Number(this.brushWidth) });
     }
 
     if (this.walls === 'lines') {
-      const { walls, direction } = wallLines(scans, this.view.grid,
-        wallTest(this.view.grid, threshold, seen), {
+      const { walls, direction } = wallLines(scans, this.drawing.grid,
+        wallTest(this.drawing.grid, threshold, seen), {
           tolerance: Number(this.lineTolerance),
           gap: Number(this.joinGap),
           joinOffset: Number(this.joinOffset),
@@ -1009,8 +1240,8 @@ export class FtuiNeatoMap extends FtuiElement {
           minLength: Number(this.minWall),
           snapDegrees: Number(this.snapAngle),
         });
-      this.view.lines = walls;
-      this.view.direction = direction;
+      this.drawing.lines = walls;
+      this.drawing.direction = direction;
     }
   }
 }

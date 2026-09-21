@@ -16,6 +16,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -80,6 +81,11 @@ async function makeData() {
   // anything about which floor the brush went over.
   await writeFile(join(dir, 'Testraum-2026-01-02_09-00-00.jsonl'),
     await readFile(join(here, 'fixtures/room-run.jsonl'), 'utf8'));
+
+  // The finished floor plan, written by the tool that would write it on a
+  // real installation - not by a copy of its logic living in this test.
+  execFileSync(process.execPath, [join(repoDir, 'tools/make-plan.mjs'), dir, 'Staubsauger'],
+    { stdio: 'pipe' });
 
   return dir;
 }
@@ -170,6 +176,9 @@ function probe(page, id) {
       walls: svg ? svg.querySelectorAll('g.wall rect').length : 0,
       wallLines: svg ? svg.querySelectorAll('g.walls line').length : 0,
       dots: svg ? svg.querySelectorAll('g.dots rect').length : 0,
+      planSure: svg ? svg.querySelectorAll('g.plan-sure rect').length : 0,
+      planAlone: svg ? svg.querySelectorAll('g.plan-alone rect').length : 0,
+      planQuarrel: svg ? svg.querySelectorAll('g.plan-quarrel rect').length : 0,
       free: svg ? svg.querySelectorAll('g.free rect').length : 0,
       points: svg ? svg.querySelectorAll('g.points rect').length : 0,
       missed: svg ? svg.querySelectorAll('g.missed rect').length : 0,
@@ -772,6 +781,82 @@ test('walls="dots" draws one square per measured cell', { skip: missing.join(', 
     assert.ok(Math.abs(seen.small.side - seen.cell * 0.4) < 1e-6,
       `dot-size="0.4" gave ${seen.small.side} m`);
     assert.equal(seen.small.dots, seen.dots.dots, 'the size changed the count');
+  } finally {
+    await context.close();
+  }
+});
+
+test('view="plan" shows what several runs agree on', { skip: missing.join(', ') || false }, async () => {
+  const context = await open();
+
+  try {
+    const plan = await probe(context.page, 'map-plan');
+    const single = await probe(context.page, 'map-listed');
+
+    assert.equal(plan.note, '', `the plan says: ${plan.note}`);
+    assert.ok(plan.planSure + plan.planAlone > 100,
+      `${plan.planSure} agreed and ${plan.planAlone} lone cells`);
+    assert.equal(plan.dots, 0, 'the plan drew a single run as well');
+    assert.equal(plan.track, 0, 'a plan has no track - it is several runs');
+
+    // It says what it is and what it is made of, and there is nothing to page
+    // through: the plan is not one of the recordings.
+    assert.equal(plan.title, 'Grundriss');
+    assert.match(plan.sub, /Läufe|Lauf/);
+    assert.equal(plan.olderDisabled, true);
+    assert.equal(plan.newerDisabled, true);
+
+    // The single run next to it is untouched by any of this.
+    assert.ok(single.dots > 100);
+    assert.equal(single.planSure, 0);
+  } finally {
+    await context.close();
+  }
+});
+
+test('a prepared plan file draws the same picture as computing it',
+  { skip: missing.join(', ') || false }, async () => {
+    const context = await open();
+
+    try {
+      const computed = await probe(context.page, 'map-plan');
+      const fromFile = await probe(context.page, 'map-planfile');
+
+      // This is the seam: whoever computes the plan - this component, the
+      // tool, or one day the module - the picture has to come out the same.
+      assert.equal(fromFile.planSure, computed.planSure);
+      assert.equal(fromFile.planAlone, computed.planAlone);
+      assert.equal(fromFile.planQuarrel, computed.planQuarrel);
+      assert.deepEqual(fromFile.viewBox.split(' ').slice(2).sort(),
+        computed.viewBox.split(' ').slice(2).sort());
+      assert.ok(computed.planSure > 0, 'nothing was drawn at all');
+
+      // And the file really was the source - it does not fetch the runs.
+      const asked = context.fhem.state.requests.filter(path => path.includes('plan-Staubsauger.json'));
+      assert.ok(asked.length > 0, 'the plan file was never fetched');
+    } finally {
+      await context.close();
+    }
+  });
+
+test('the disputed cells can be turned off', { skip: missing.join(', ') || false }, async () => {
+  const context = await open();
+
+  try {
+    const seen = await context.page.evaluate(async () => {
+      const map = document.querySelector('#map-plan');
+      const count = () => ({
+        quarrel: map.shadowRoot.querySelectorAll('.stage svg g.plan-quarrel rect').length,
+        sure: map.shadowRoot.querySelectorAll('.stage svg g.plan-sure rect').length,
+      });
+      const before = count();
+      map.setAttribute('show-disputed', 'false');
+      await new Promise(done => setTimeout(done, 400));
+      return { before, after: count() };
+    });
+
+    assert.equal(seen.after.quarrel, 0);
+    assert.equal(seen.after.sure, seen.before.sure, 'turning them off changed the walls');
   } finally {
     await context.close();
   }

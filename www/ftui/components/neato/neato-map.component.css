@@ -42,6 +42,7 @@
   --map-end: var(--neato-map-end-color, var(--danger-color, #e05252));
   --map-missed: var(--neato-map-missed-color, var(--danger-color, #e05252));
   --map-stuck: var(--neato-map-stuck-color, var(--danger-color, #e05252));
+  --map-disputed: var(--neato-map-disputed-color, var(--danger-color, #e05252));
 }
 
 .stage {
@@ -99,6 +100,14 @@
      staircase. */
   shape-rendering: geometricPrecision;
 }
+
+/* The floor plan several runs make together. What they agree on is drawn
+   fully, what only one of them ever saw is dimmed - nobody contradicts it, but
+   nobody confirms it either - and what one calls a wall while the others saw
+   floor gets its own colour. */
+.plan-sure { fill: var(--neato-map-dot-color, var(--map-wall)); }
+.plan-alone { fill: var(--neato-map-dot-color, var(--map-wall)); opacity: 0.4; }
+.plan-quarrel { fill: var(--map-disputed); }
 
 /* A ring around the spot where he stopped and did not go on. */
 .stuck {

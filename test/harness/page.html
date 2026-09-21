@@ -69,6 +69,20 @@
                       file="Testraum-2026-01-02_09-00-00.jsonl"></ftui-neato-map>
     </ftui-grid-tile>
 
+    <!-- Der gemeinsame Grundriss, einmal hier gerechnet und einmal aus der
+         Datei, die tools/make-plan.mjs geschrieben hat. Beide muessen
+         dasselbe zeigen - das ist die Naht, an der die Rechnung spaeter
+         woanders hin kann. -->
+    <ftui-grid-tile id="planned" row="7" col="4" width="3" height="3">
+      <ftui-grid-header>Grundriss</ftui-grid-header>
+      <ftui-neato-map id="map-plan" view="plan" device="Staubsauger"></ftui-neato-map>
+    </ftui-grid-tile>
+
+    <ftui-grid-tile id="planfile" row="7" col="7" width="3" height="3">
+      <ftui-neato-map id="map-planfile" view="plan" device="Staubsauger"
+                      show-info="false" plan-file="plan-Staubsauger.json"></ftui-neato-map>
+    </ftui-grid-tile>
+
     <!-- The raw endpoints instead of the grid, in a tile of another shape. -->
     <ftui-grid-tile id="points" row="5" col="1" width="3" height="2">
       <ftui-neato-map id="map-points" show-points show-info="false"

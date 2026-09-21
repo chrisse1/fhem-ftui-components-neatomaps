@@ -2,6 +2,18 @@
 # Leerzeile an - neue Eintraege gehoeren also nach oben, und zwischen den
 # Bloecken steht genau eine Leerzeile. Eine Leerzeile direkt hier waere das
 # Ende der Anzeige, bevor sie angefangen hat.
+2026-09-21 ftui-neato-map 1.9.0
+ - view="plan" zeigt den gemeinsamen Grundriss statt einer Aufzeichnung:
+   voll, was die Laeufe einig nennen, blass, was nur einer sah, und in
+   eigener Farbe, was einer Wand nennt und die anderen Boden
+ - plan-file laedt einen fertigen Grundriss (7 kB gzip) statt ihn zu
+   rechnen. Im Browser rechnen kostet auf Tablet-Tempo 5,2 s fuer drei
+   Laeufe und laedt dafuer 2 MB - ab einer Handvoll Laeufen gehoert das in
+   eine Datei, die tools/make-plan.mjs schreibt
+ - das Dateiformat ist die Naht: wer den Grundriss rechnet, ist dahinter
+   austauschbar. Ein Test haelt beide Wege gegeneinander
+ - plan-runs, plan-agree, show-disputed und disputed-color stellen es ein
+
 2026-09-21 ftui-neato-map 1.8.0
  - neato-plan.js legt mehrere Aufzeichnungen zu einem Grundriss zusammen:
    Drehung und Versatz werden gesucht, dann stimmt jede Zelle ab. An drei
