@@ -2,6 +2,13 @@
 # Leerzeile an - neue Eintraege gehoeren also nach oben, und zwischen den
 # Bloecken steht genau eine Leerzeile. Eine Leerzeile direkt hier waere das
 # Ende der Anzeige, bevor sie angefangen hat.
+2026-09-23 ftui-neato-map 1.16.2
+ - README auf den aktuellen Stand: neue Bilder aus vier echten Stundenlaeufen,
+   der Grundriss und die gereinigte Flaeche kommen darin vor, das
+   Einstiegsbeispiel zeigt, was man heute schreibt
+ - tools/screenshot.mjs erzeugt alle vier Bilder statt nur eines und nimmt ein
+   Verzeichnis mit echten Aufzeichnungen entgegen
+
 2026-09-23 ftui-neato-map 1.16.1
  - aufgeraeumt, ohne Verhaltensaenderung: "ist diese Zelle eine Wand" stand
    an vier Stellen und in zwei Fassungen. Die abweichende zaehlte eine Zelle,

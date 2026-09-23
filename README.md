@@ -1,10 +1,15 @@
 # ftui-neato-map
 
 Eine FTUI3-Komponente, die die Reinigungskarte eines Neato Botvac anzeigt –
-das Belegungsgitter aus den Lidar-Scans, die gefahrene Spur darüber, und die
-aufgezeichneten Läufe zum Durchblättern.
+das Belegungsgitter aus den Lidar-Scans, die gefahrene Spur darüber, die
+aufgezeichneten Läufe zum Durchblättern, wieviel davon gereinigt wurde, und auf
+Wunsch den gemeinsamen Grundriss, den mehrere Läufe zusammen ergeben.
 
 ![Eine Kachel mit der Karte eines Laufs](docs/screenshot.png)
+
+*Ein Lauf in einer Kachel: Wände als gemessene Zellen, die Spur darüber, unten
+Strecke, Dauer, gereinigte Fläche und der Zähler. Der Knopf links schaltet zum
+Grundriss.*
 
 Die Daten kommen vom FHEM-Modul [`74_NeatoLocal`](https://github.com/chrisse1/neato-FHEM).
 Das Modul zeichnet auf und schreibt eine Datei je Lauf; gezeichnet wird hier.
@@ -69,10 +74,18 @@ So oder so ist mehr nicht nötig: FTUI lädt zu `<ftui-neato-map>` von sich aus
   <ftui-grid-header>Staubsauger</ftui-grid-header>
 
   <ftui-neato-map device="Staubsauger"
+                  show-cleaned
+                  show-toggle
+                  [plan-file]="Staubsauger:planFile"
                   [track-file]="Staubsauger:trackFile"
                   [state]="Staubsauger:state"></ftui-neato-map>
 </ftui-grid-tile>
 ```
+
+Das ist alles, was es braucht. `device` genügt für die Karte; alles Weitere ist
+Zugabe: `show-cleaned` schreibt die gereinigte Fläche in die Zeile darunter,
+`show-toggle` setzt einen Knopf in die Leiste, der zum gemeinsamen Grundriss
+umschaltet, und `[plan-file]` sagt, wo der liegt.
 
 Die Karte nimmt die Größe der Kachel an – den ganzen Platz unterhalb des
 Kachelkopfs – und zeichnet sich bei jeder Größenänderung neu, ohne die Daten
@@ -332,10 +345,12 @@ Ecke bleibt offen.
 Wem das zu viel Deutung ist: `walls="cells"` zeigt weiter die Zellen, die das
 Gitter als Wand zählt – die rohe Evidenz, ohne jede Glättung.
 
-![Links die Zellen, rechts dieselbe Aufzeichnung als Linien](docs/cells-vs-lines.png)
+![Dieselbe Aufzeichnung als Punkte, als Linien und als Zellen](docs/wall-styles.png)
 
-Dieselbe Aufzeichnung, links `walls="cells"` mit 158 Rechtecken, rechts der
-Standard mit 26 Linien.
+Dieselbe Aufzeichnung dreimal. An `lines` in der Mitte sieht man auch, was der
+Preis der Aufgeräumtheit ist: ein paar lange Diagonalen, die es so nicht gibt –
+sie entstehen, wenn zwei Wandstücke derselben Flucht verbunden werden, die in
+Wahrheit zu verschiedenen Wänden gehören.
 
 ## Mehrere Läufe als ein Grundriss
 
@@ -343,6 +358,13 @@ Standard mit 26 Linien.
 <ftui-neato-map device="Staubsauger" view="plan"
                 plan-file="plan-Staubsauger.json"></ftui-neato-map>
 ```
+
+![Links ein Lauf, rechts der Grundriss aus vier Läufen](docs/plan.png)
+
+*Links ein einzelner Lauf, rechts derselbe Grundriss aus vier Läufen: die
+Wände sind vollständiger, weil jeder Lauf ergänzt, was der andere nicht gesehen
+hat, und die roten Zellen sind die, über die sich die Läufe uneinig sind –
+Möbel, offene und geschlossene Türen.*
 
 Der Grundriss ist eine **eigene Ansicht**, keine Zutat zur Laufansicht – ohne
 `view="plan"` wird `plan-file` gar nicht erst geladen. Wer beides in einer
@@ -500,6 +522,8 @@ ein rotes Muster über der ganzen Wohnung eher nicht.
 Im Tooltip steht die ganze Geschichte: *48,9 von 58,3 m² Boden gereinigt
 (84 %)*.
 
+![Links nur die Zahl, rechts der ausgelassene Boden schraffiert](docs/cleaned.png)
+
 Der Roboter ist eine Scheibe von 32 cm, also gilt alles als gesaugt, was näher
 als 16 cm an seiner Spur liegt; was das Belegungsgitter frei nennt und die Spur
 nicht erreicht hat, blieb liegen – die andere Seite einer Tür, durch die er nur
@@ -614,8 +638,9 @@ tools/make_controls.sh
 
 Wird das vergessen, schlägt `test/controls.test.mjs` fehl – dafür ist er da.
 
-Die Standardwerte der Vereinfachung sind an *einer* Aufzeichnung gemessen.
-Ob sie für eine dichtere passen, beantwortet keine Meinung, sondern:
+Die Standardwerte der Vereinfachung sind gemessen, nicht geraten – an der
+ausgedünnten Referenz und an mehreren Stundenläufen einer Wohnung. Ob sie für
+eine andere passen, beantwortet keine Meinung, sondern:
 
 ```sh
 node tools/tune-walls.mjs /opt/fhem/www/neato/<Datei>.jsonl karte.svg
@@ -647,7 +672,17 @@ Der Test startet ein FHEMWEB-Double (`test/harness/fake-fhem.mjs`), legt die
 Komponente über den FTUI-Klon und fährt eine echte FTUI-Seite auf. Fehlt FTUI
 oder Playwright, überspringt er sich selbst.
 
-`node tools/screenshot.mjs` macht daraus das Bild oben.
+`node tools/screenshot.mjs` macht daraus die vier Bilder in `docs/`. Mit einem
+Verzeichnis als Argument nimmt es echte Aufzeichnungen – so sind die Bilder
+hier entstanden, aus vier Stundenläufen einer Wohnung:
+
+```sh
+node tools/screenshot.mjs /opt/fhem/www/neato Staubsauger
+```
+
+Ohne Argument nimmt es die ausgedünnte Referenz aus `test/fixtures`. Die reicht
+für die Wandarten, nicht für die gereinigte Fläche: Liegen zwanzig Sekunden
+zwischen zwei Posen, lässt die Komponente die Zahl zu Recht weg.
 
 ## Lizenz
 
