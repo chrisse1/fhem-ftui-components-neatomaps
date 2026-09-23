@@ -25,7 +25,7 @@ import * as track from './neato-track.js';
 import { wallLines, wallTest } from './neato-walls.js';
 import { alignScans } from './neato-align.js';
 import { countMissed, trackIsDense, standstills } from './neato-run.js';
-import { survey, mergePlan } from './neato-plan.js';
+import { survey, mergePlan, isWall } from './neato-plan.js';
 
 /*
 * Attributes that are nothing but a CSS custom property on the element.
@@ -64,7 +64,6 @@ const TEXTS = {
     newer: 'neuer',
     minutes: 'min',
     metres: 'm',
-    covered: 'Abdeckung %s %',
     cleanedOf: '%c von %f m² Boden gereinigt (%p %)',
     still: '%s s gestanden',
     plan: 'Grundriss',
@@ -92,7 +91,6 @@ const TEXTS = {
     newer: 'newer',
     minutes: 'min',
     metres: 'm',
-    covered: '%s % covered',
     cleanedOf: '%c of %f m² of floor cleaned (%p %)',
     still: 'stood still for %s s',
     plan: 'Floor plan',
@@ -1106,8 +1104,7 @@ export class FtuiNeatoMap extends FtuiElement {
 
   /** Whether enough of the runs that looked call this cell a wall. */
   agreed(cell) {
-    const agree = Number(this.planAgree);
-    return cell.seen > 0 && cell.walls / cell.seen >= (agree >= 0 ? agree : 0.5);
+    return isWall(cell, Number(this.planAgree));
   }
 
   /**
@@ -1128,16 +1125,14 @@ export class FtuiNeatoMap extends FtuiElement {
     const sy = (y) => (maxY - y + pad).toFixed(3);
 
     const groups = { sure: [], alone: [], quarrel: [] };
-    const size = cell * (Number(this.dotSize) > 0 ? Number(this.dotSize) : 0.72);
-    const inset = (cell - size) / 2;
+    const dot = this.dotShape(cell);
 
     for (const spot of this.plan.cells) {
       const where = this.agreed(spot) ? (spot.seen > 1 ? 'sure' : 'alone') : 'quarrel';
       if (where === 'quarrel' && !this.showDisputed) {
         continue;
       }
-      groups[where].push(`<rect x="${sx(spot.x + inset)}" y="${sy(spot.y + inset + size)}"`
-        + ` width="${size.toFixed(3)}" height="${size.toFixed(3)}"/>`);
+      groups[where].push(dot(spot.x, spot.y, sx, sy));
     }
 
     const turn = this.turned(width, height);
@@ -1296,20 +1291,31 @@ export class FtuiNeatoMap extends FtuiElement {
    */
   cellDots(runs, view, sx, sy) {
     const cell = view.grid.cell;
-    const size = cell * (Number(this.dotSize) > 0 ? Number(this.dotSize) : 0.72);
-    const inset = (cell - size) / 2;
+    const dot = this.dotShape(cell);
     const out = [];
 
     for (const [ix, iy, run] of runs) {
       for (let i = 0; i < run; i++) {
-        const x = (ix + i + view.grid.x0) * cell + inset;
-        const y = (iy + view.grid.y0) * cell + inset;
-        out.push(`<rect x="${sx(x)}" y="${sy(y + size)}"`
-          + ` width="${size.toFixed(3)}" height="${size.toFixed(3)}"/>`);
+        out.push(dot((ix + i + view.grid.x0) * cell, (iy + view.grid.y0) * cell, sx, sy));
       }
     }
 
     return out.join('');
+  }
+
+  /**
+   * One square for a cell whose lower left corner is at (x, y).
+   *
+   * Both the map and the floor plan draw the same square; only the cells they
+   * get it from differ.
+   */
+  dotShape(cell) {
+    const size = cell * (Number(this.dotSize) > 0 ? Number(this.dotSize) : 0.72);
+    const inset = (cell - size) / 2;
+    const side = size.toFixed(3);
+
+    return (x, y, sx, sy) => `<rect x="${sx(x + inset)}" y="${sy(y + inset + size)}"`
+      + ` width="${side}" height="${side}"/>`;
   }
 
   /** Row runs as rectangles, in metres. */

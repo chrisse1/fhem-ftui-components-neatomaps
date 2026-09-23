@@ -34,7 +34,7 @@ import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { parseSession } from '../www/ftui/components/neato/neato-track.js';
-import { survey, mergePlan } from '../www/ftui/components/neato/neato-plan.js';
+import { survey, mergePlan, scoreList } from '../www/ftui/components/neato/neato-plan.js';
 
 const args = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -90,14 +90,7 @@ for (const rejected of plan.rejected) {
 // which a run is dropped is an assumption, not a measurement - see
 // docs/plan-format.md - and this is the only place the evidence to settle it
 // can accumulate.
-const scores = [...plan.placements.map(placement => ({ ...placement, used: true })),
-  ...plan.rejected.map(rejected => ({ ...rejected, used: false }))]
-  .map(entry => ({
-    file: names[entry.index],
-    score: Number(entry.score.toFixed(3)),
-    used: entry.used,
-  }))
-  .sort((a, b) => b.score - a.score);
+const scores = scoreList(plan, index => names[index]);
 
 const body = JSON.stringify({
   cell,

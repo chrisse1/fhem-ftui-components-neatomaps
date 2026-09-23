@@ -357,18 +357,52 @@ export function mergePlan(surveys, options = {}) {
 }
 
 /**
- * The cells a plan is willing to call a wall.
+ * Whether a plan calls this cell a wall.
  *
  * `agree` is the share of the runs that looked which have to agree. Half of
  * them is a sensible default: a wall two of three runs see is a wall, and
  * something only one of three sees, while the other two looked at the same
  * spot and saw floor, is furniture.
+ *
+ * A cell only one run ever saw passes: it has walls = seen = 1, nobody
+ * contradicts it, and throwing it out would discard exactly what several runs
+ * are for. The drawing shows it paler, not differently.
+ *
+ * The one rule, in one place. It lived in four before, in two versions - the
+ * odd one out counted a cell seen by a single run as unsettled, which put the
+ * pale cells in the same basket as the contradicted ones.
  */
-export function confident(plan, agree = 0.5) {
-  return plan.cells.filter(cell => cell.seen > 0 && cell.walls / cell.seen >= agree);
+export function isWall(cell, agree = 0.5) {
+  return cell.seen > 0 && cell.walls / cell.seen >= (agree >= 0 ? agree : 0.5);
 }
 
-/** The other side of the same coin: seen by several, called a wall by one. */
+/** The cells a plan is willing to call a wall. */
+export function confident(plan, agree = 0.5) {
+  return plan.cells.filter(cell => isWall(cell, agree));
+}
+
+/** The other side of the same coin: several looked, and most saw floor. */
 export function disputed(plan, agree = 0.5) {
-  return plan.cells.filter(cell => cell.seen > 1 && cell.walls / cell.seen < agree);
+  return plan.cells.filter(cell => !isWall(cell, agree));
+}
+
+/**
+ * Every run with the score it reached, fitted or not, newest first.
+ *
+ * The shape docs/plan-format.md asks for. It lives here rather than in the
+ * two tools that write it, because "ALL the runs that were offered, not only
+ * the ones that fit" is the whole point of the field and not a detail either
+ * of them should get to decide on its own.
+ */
+export function scoreList(plan, nameOf) {
+  return [
+    ...plan.placements.map(entry => ({ ...entry, used: true })),
+    ...plan.rejected.map(entry => ({ ...entry, used: false })),
+  ]
+    .map(entry => ({
+      file: nameOf(entry.index),
+      score: Number(entry.score.toFixed(3)),
+      used: entry.used,
+    }))
+    .sort((a, b) => b.score - a.score);
 }

@@ -24,7 +24,7 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { parseSession } from '../www/ftui/components/neato/neato-track.js';
-import { survey, mergePlan } from '../www/ftui/components/neato/neato-plan.js';
+import { survey, mergePlan, scoreList } from '../www/ftui/components/neato/neato-plan.js';
 
 // An L, on purpose: a rectangle with a divider looks the same upside down,
 // and then there is no single right answer to find.
@@ -136,14 +136,7 @@ writeFileSync(`${dir}plan.json`, JSON.stringify({
   cell: plan.cell,
   runs: plan.runs,
   files: plan.placements.map(placement => `${MOVES[placement.index].name}.jsonl`),
-  scores: [...plan.placements.map(p => ({ ...p, used: true })),
-    ...plan.rejected.map(p => ({ ...p, used: false }))]
-    .map(entry => ({
-      file: `${MOVES[entry.index].name}.jsonl`,
-      score: Number(entry.score.toFixed(3)),
-      used: entry.used,
-    }))
-    .sort((a, b) => b.score - a.score),
+  scores: scoreList(plan, index => `${MOVES[index].name}.jsonl`),
   cells: plan.cells.map(spot => [
     Math.round(spot.x / plan.cell), Math.round(spot.y / plan.cell), spot.walls, spot.seen,
   ]),

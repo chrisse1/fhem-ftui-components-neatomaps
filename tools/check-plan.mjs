@@ -26,7 +26,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { parseSession } from '../www/ftui/components/neato/neato-track.js';
-import { survey, mergePlan, frameOf, registerTo } from '../www/ftui/components/neato/neato-plan.js';
+import { survey, mergePlan, frameOf, registerTo, isWall }
+  from '../www/ftui/components/neato/neato-plan.js';
 
 const LIMITS = {
   // Share of the other plan's cells that have to be found within one cell,
@@ -239,8 +240,6 @@ function overlap(wanted, have) {
   let near = 0;
   let sameKind = 0;
 
-  const settled = (cell) => cell.seen > 1 && cell.walls / cell.seen >= 0.5;
-
   for (const cell of wanted.cells) {
     const straight = lookup.get(key(cell.ix, cell.iy));
     if (straight) {
@@ -254,7 +253,7 @@ function overlap(wanted, have) {
     }
     if (match) {
       near++;
-      if (settled(match) === settled(cell)) {
+      if (isWall(match) === isWall(cell)) {
         sameKind++;
       }
     }

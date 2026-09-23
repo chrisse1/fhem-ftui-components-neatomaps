@@ -2,6 +2,15 @@
 # Leerzeile an - neue Eintraege gehoeren also nach oben, und zwischen den
 # Bloecken steht genau eine Leerzeile. Eine Leerzeile direkt hier waere das
 # Ende der Anzeige, bevor sie angefangen hat.
+2026-09-23 ftui-neato-map 1.16.1
+ - aufgeraeumt, ohne Verhaltensaenderung: "ist diese Zelle eine Wand" stand
+   an vier Stellen und in zwei Fassungen. Die abweichende zaehlte eine Zelle,
+   die nur ein Lauf gesehen hat, als unentschieden - damit lagen die blassen
+   Zellen im selben Korb wie die widersprochenen. Jetzt isWall() fuer alle
+ - das Quadrat einer Zelle zeichnet eine Stelle statt zweier, und die beiden
+   Werkzeuge bauen die scores-Liste nicht mehr jedes fuer sich
+ - ein Textschluessel war seit 1.16.0 unbenutzt
+
 2026-09-23 ftui-neato-map 1.16.0
  - show-cleaned schreibt die gereinigte Flaeche in die Zeile unter der
    Karte: "342,6 m - 58 min - 48,9 m2". Im Tooltip steht, wieviel Boden es
