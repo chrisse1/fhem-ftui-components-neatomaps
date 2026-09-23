@@ -2,6 +2,16 @@
 # Leerzeile an - neue Eintraege gehoeren also nach oben, und zwischen den
 # Bloecken steht genau eine Leerzeile. Eine Leerzeile direkt hier waere das
 # Ende der Anzeige, bevor sie angefangen hat.
+2026-09-23 ftui-neato-map 1.15.0
+ - die Zeile unter dem Grundriss nennt jetzt die Ausdehnung statt der
+   Flaeche der Wandzellen. "30 m2" waren die 10-cm-Quadrate der Waende
+   zusammengezaehlt - unter einem Grundriss liest sich das als Groesse der
+   Wohnung und ist nichts dergleichen
+ - die strittigen Zellen stehen nicht mehr als blosses "95 ?" da, sondern
+   mit Wort
+ - der Tooltip schluesselt die Zellen so auf, wie die Zeichnung sie faerbt:
+   von mehreren bestaetigt, nur von einem gesehen, strittig
+
 2026-09-21 ftui-neato-map 1.14.0
  - show-toggle setzt einen Knopf in die Leiste, der zwischen Grundriss und
    Laeufen umschaltet. Eine Kachel fuer beides

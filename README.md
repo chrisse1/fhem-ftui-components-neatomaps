@@ -362,9 +362,18 @@ und `view="plan"` als Startwert ist erlaubt.
 In der Laufansicht blättern Pfeile, Wischen und die Pfeiltasten wie immer; im
 Grundriss gibt es nichts zu blättern, und sie tun nichts.
 
-Wurde ein Lauf verworfen, weil er nicht passte, steht in der Zeile „3 von 4
-Läufen" statt „3 Läufe", und der Tooltip nennt ihn mit seiner Güte – ein
-verlorener Lauf soll nicht stillschweigend verschwinden.
+Die Zeile darunter nennt die Zahl der Läufe, die **Ausdehnung** des
+Grundrisses und wie viele Zellen strittig sind:
+
+```
+4 Läufe · 11,9 × 9 m · 94 strittig
+```
+
+Der Tooltip schlüsselt die Zellen so auf, wie die Zeichnung sie färbt: von
+mehreren bestätigt, nur von einem gesehen, strittig. Wurde ein Lauf verworfen,
+weil er nicht passte, steht in der Zeile „3 von 4 Läufen" statt „4 Läufe", und
+der Tooltip nennt ihn mit seiner Güte – ein verlorener Lauf soll nicht
+stillschweigend verschwinden.
 
 Drei Arten Zelle, und der Unterschied zwischen ihnen ist der ganze Grund,
 mehrere Läufe zu nehmen: worauf sie sich einigen (voll gezeichnet), was nur

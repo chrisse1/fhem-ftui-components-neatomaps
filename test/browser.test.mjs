@@ -986,9 +986,19 @@ test('a run that did not fit is said out loud, not just left out',
       });
 
       assert.match(seen.before.sub, /3 Läufe|3 runs/);
-      assert.equal(seen.before.title, '', 'nothing was dropped, so nothing to explain');
+      // The line says how large the flat is, not how much area the wall cells
+      // cover - "30 m²" of ten centimetre squares reads as the size of the
+      // flat and is nothing of the sort.
+      assert.match(seen.before.sub, /\d+([.,]\d)? × \d+([.,]\d)? m/,
+        `the line says "${seen.before.sub}", expected an extent in metres`);
+      // The tooltip breaks the cells down the way the drawing colours them.
+      assert.match(seen.before.title, /bestätigt|confirmed/);
+      assert.match(seen.before.title, /einem Lauf|one run/);
+      assert.ok(!seen.before.title.includes('Passte nicht'),
+        'nothing was dropped, so nothing to say about it');
 
       assert.match(seen.after.sub, /3 von 4|3 of 4/);
+      assert.match(seen.after.title, /Passte nicht|Did not fit/);
       assert.match(seen.after.title, /d\.jsonl \(0\.33\)/);
       assert.ok(!seen.after.title.includes('b.jsonl'), 'a run that did fit is in the tooltip');
       assert.equal(seen.after.sure, seen.before.sure, 'the picture changed as well');

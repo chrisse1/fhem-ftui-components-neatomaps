@@ -72,6 +72,9 @@ const TEXTS = {
     building: 'Grundriss wird gerechnet …',
     runs: '%s Läufe',
     ofRuns: '%s von %t Läufen',
+    disputedCells: '%s strittig',
+    confirmedCells: '%s Zellen von mehreren Läufen bestätigt',
+    aloneCells: '%s nur von einem Lauf gesehen',
     didNotFit: 'Passte nicht',
     oneRun: 'ein Lauf',
     noPlan: 'Kein Grundriss - keine Aufzeichnung gefunden',
@@ -96,6 +99,9 @@ const TEXTS = {
     building: 'Building the floor plan …',
     runs: '%s runs',
     ofRuns: '%s of %t runs',
+    disputedCells: '%s disputed',
+    confirmedCells: '%s cells confirmed by several runs',
+    aloneCells: '%s seen by one run only',
     didNotFit: 'Did not fit',
     oneRun: 'one run',
     noPlan: 'No floor plan - no recording found',
@@ -1002,22 +1008,68 @@ export class FtuiNeatoMap extends FtuiElement {
       } else {
         parts.push(plan.runs === 1 ? texts.oneRun : texts.runs.replace('%s', String(plan.runs)));
       }
-      const sure = plan.cells.filter(cell => this.agreed(cell)).length;
-      parts.push(`${(sure * plan.cell * plan.cell).toLocaleString(
-        this.locale || document.documentElement.lang || undefined,
-        { maximumFractionDigits: 1 })} m²`);
-      const quarrel = plan.cells.length - sure;
+      // How large the mapped flat is - a number somebody can hold against
+      // their own walls. Not the area of the wall cells, which is what stood
+      // here and which measures nothing anybody wants to know: 30 m2 of
+      // 10 cm squares under a floor plan reads as the size of the flat and is
+      // not remotely that.
+      const size = this.planSize();
+      const decimal = this.locale || document.documentElement.lang || undefined;
+      const metres = (value) => value.toLocaleString(decimal, { maximumFractionDigits: 1 });
+      parts.push(`${metres(size.width)} × ${metres(size.height)} m`);
+
+      const quarrel = this.countDisputed();
       if (quarrel && this.showDisputed) {
-        parts.push(`${quarrel} ?`);
+        parts.push(texts.disputedCells.replace('%s', String(quarrel)));
       }
     }
 
-    const dropped = (plan && plan.scores ? plan.scores : []).filter(entry => !entry.used);
     this.subElement.innerHTML = parts.join(' · ').replace(/[<>&]/g, '');
-    this.subElement.title = dropped.length
-      ? `${texts.didNotFit}: ${dropped.map(entry =>
-        `${entry.file || '?'} (${entry.score.toFixed(2)})`).join(', ')}`
-      : '';
+    this.subElement.title = this.planTooltip();
+  }
+
+  /** The three kinds of cell, spelled out, plus whatever did not fit. */
+  planTooltip() {
+    const plan = this.plan;
+    if (!plan || !plan.cells.length) {
+      return '';
+    }
+
+    const texts = this.texts;
+    const quarrel = this.countDisputed();
+    const alone = plan.cells.filter(cell => cell.seen === 1 && this.agreed(cell)).length;
+    const lines = [
+      texts.confirmedCells.replace('%s', String(plan.cells.length - quarrel - alone)),
+      texts.aloneCells.replace('%s', String(alone)),
+      texts.disputedCells.replace('%s', String(quarrel)),
+    ];
+
+    const dropped = (plan.scores || []).filter(entry => !entry.used);
+    if (dropped.length) {
+      lines.push(`${texts.didNotFit}: ${dropped.map(entry =>
+        `${entry.file || '?'} (${entry.score.toFixed(2)})`).join(', ')}`);
+    }
+
+    return lines.join('\n');
+  }
+
+  countDisputed() {
+    return this.plan ? this.plan.cells.filter(cell => !this.agreed(cell)).length : 0;
+  }
+
+  /** How far the plan reaches, in metres. */
+  planSize() {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const spot of this.plan.cells) {
+      if (spot.x < minX) { minX = spot.x; }
+      if (spot.x > maxX) { maxX = spot.x; }
+      if (spot.y < minY) { minY = spot.y; }
+      if (spot.y > maxY) { maxY = spot.y; }
+    }
+    const cell = this.plan.cell;
+    return isFinite(minX)
+      ? { minX, maxX, minY, maxY, width: maxX - minX + cell, height: maxY - minY + cell }
+      : { minX: 0, maxX: 0, minY: 0, maxY: 0, width: 0, height: 0 };
   }
 
   /** The switch between the two views - hidden unless it was asked for. */
@@ -1050,16 +1102,10 @@ export class FtuiNeatoMap extends FtuiElement {
   planSvg() {
     const cell = this.plan.cell;
     const pad = Number(this.pad) || 0;
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    for (const spot of this.plan.cells) {
-      if (spot.x < minX) { minX = spot.x; }
-      if (spot.x > maxX) { maxX = spot.x; }
-      if (spot.y < minY) { minY = spot.y; }
-      if (spot.y > maxY) { maxY = spot.y; }
-    }
-
-    const width = (maxX - minX) + cell + 2 * pad;
-    const height = (maxY - minY) + cell + 2 * pad;
+    const extent = this.planSize();
+    const { minX, maxY } = extent;
+    const width = extent.width + 2 * pad;
+    const height = extent.height + 2 * pad;
     const sx = (x) => (x - minX + pad).toFixed(3);
     const sy = (y) => (maxY - y + pad).toFixed(3);
 
