@@ -130,7 +130,8 @@ Solange `state` auf `cleaning` steht, wird die laufende Aufzeichnung alle
 | `show-points` | aus | Die rohen Endpunkte statt des Belegungsgitters zeichnen. |
 | `show-info` | an | Zeile mit Datum, Strecke, Dauer und Zähler. |
 | `show-controls` | an | Die Pfeile zum Blättern. |
-| `show-missed` | aus | Den Boden schraffieren, über den die Bürste nie gefahren ist, und die Abdeckung in die Zeile schreiben. Bei einer ausgedünnten Aufzeichnung passiert nichts – siehe unten. |
+| `show-cleaned` | aus | Die gereinigte Fläche in die Zeile unter der Karte schreiben. Bei einer ausgedünnten Aufzeichnung passiert nichts – siehe unten. |
+| `show-missed` | aus | Zusätzlich den Boden schraffieren, über den die Bürste nie gefahren ist. |
 | `brush-width` | `0.32` | Breite des Roboters in Metern. Alles, was näher als die Hälfte davon an der Spur liegt, gilt als gesaugt. |
 | `show-stuck` | an | Einen Ring um die Stellen zeichnen, an denen er abseits der Basis stehen geblieben ist. |
 | `stuck-seconds` | `20` | Ab wann das ein Stehenbleiben ist. `0` schaltet es ab. |
@@ -485,19 +486,29 @@ Zwei Dinge stehen in der Aufzeichnung, die man der Karte nicht ansieht.
 `neato-run.js` rechnet sie aus, beide aus der Fahrspur, beide ohne das Modul
 anzufassen.
 
-### Was er ausgelassen hat
+### Wieviel er gereinigt hat, und was er ausgelassen hat
 
-`show-missed` schraffiert den Boden, über den die Bürste nie gefahren ist, und
-schreibt die Abdeckung in die Zeile darunter. Der Roboter ist eine Scheibe von
-32 cm, also gilt alles als gesaugt, was näher als 16 cm an seiner Spur liegt;
-was das Belegungsgitter frei nennt und die Spur nicht erreicht hat, blieb
-liegen – die andere Seite einer Tür, durch die er nur geschaut hat, die Ecke
-hinter dem Stuhl, das Zimmer, in das er nicht kam. Die Handbreit an jeder Wand
-gehört dazu: näher kommt eine Scheibe nicht heran.
+`show-cleaned` schreibt die gereinigte Fläche in die Zeile unter der Karte,
+`show-missed` schraffiert zusätzlich den Boden, über den die Bürste nie
+gefahren ist. Beides dieselbe Rechnung – die Zahl will man nach jedem Lauf,
+ein rotes Muster über der ganzen Wohnung eher nicht.
 
-An zwei echten Läufen gemessen: 86 % einer ganzen Wohnung in einer Stunde,
-74 % bei einem Lauf, der vorzeitig endete. Kosten rund 10 ms, deshalb wird es
-nur gerechnet, wenn es eingeschaltet ist.
+```
+342,6 m · 58 min · 48,9 m² · 1/4
+```
+
+Im Tooltip steht die ganze Geschichte: *48,9 von 58,3 m² Boden gereinigt
+(84 %)*.
+
+Der Roboter ist eine Scheibe von 32 cm, also gilt alles als gesaugt, was näher
+als 16 cm an seiner Spur liegt; was das Belegungsgitter frei nennt und die Spur
+nicht erreicht hat, blieb liegen – die andere Seite einer Tür, durch die er nur
+geschaut hat, die Ecke hinter dem Stuhl, das Zimmer, in das er nicht kam. Die
+Handbreit an jeder Wand gehört dazu: näher kommt eine Scheibe nicht heran.
+
+An vier echten Läufen derselben Wohnung gemessen: 48,9, 47,6 und 48,0 m² für
+die vollen Läufe, 21,1 m² für einen, der nach 25 Minuten endete. Kosten rund
+10 ms, deshalb wird es nur gerechnet, wenn es eingeschaltet ist.
 
 **Bei einer ausgedünnten Aufzeichnung passiert nichts.** Liegen zwischen zwei
 Posen zwanzig Sekunden, war der Roboter dazwischen irgendwo, und eine gerade

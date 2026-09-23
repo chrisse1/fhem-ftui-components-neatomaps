@@ -364,7 +364,11 @@ test('the floor he left out is hatched, and counted in the line', { skip: missin
 
     assert.ok(room.missed > 0, 'nothing is marked as left out');
     assert.equal(room.hatch, 1, 'the hatching pattern is missing');
-    assert.ok(/7[0-9] %/.test(room.sub), `the line says "${room.sub}", expected a coverage in the seventies`);
+
+    // The made-up room is 5 x 4 m and was driven in lanes up to x = 3.6, so
+    // between thirteen and fifteen square metres came out clean.
+    assert.match(room.sub, /1[345](,\d)? m²/,
+      `the line says "${room.sub}", expected the cleaned area`);
 
     // The thinned recordings cannot say anything about it, and say nothing:
     // a straight line between two poses twenty seconds apart is an invention.
@@ -388,6 +392,36 @@ test('the floor he left out is hatched, and counted in the line', { skip: missin
     await context.close();
   }
 });
+
+test('the cleaned area can be had without the hatching',
+  { skip: missing.join(', ') || false }, async () => {
+    const context = await open();
+
+    try {
+      const bare = await probe(context.page, 'map-cleaned');
+      const hatched = await probe(context.page, 'map-room');
+
+      // Same recording, same arithmetic, same number.
+      assert.equal(bare.sub, hatched.sub);
+      assert.match(bare.sub, /m²/);
+
+      // But no red pattern over the flat - that is what show-missed is for.
+      assert.equal(bare.missed, 0, 'show-cleaned hatched the map as well');
+      assert.ok(hatched.missed > 0);
+
+      // The share and the floor it is a share of belong in the tooltip.
+      const title = await context.page.evaluate(() =>
+        document.querySelector('#map-cleaned').shadowRoot.querySelector('.sub').title);
+      assert.match(title, /7[0-9] %|gereinigt|cleaned/);
+      assert.match(title, /m²/);
+
+      // And a map that was asked for neither says nothing about it.
+      const quiet = await probe(context.page, 'map-listed');
+      assert.ok(!quiet.sub.includes('m²'), `the line says "${quiet.sub}"`);
+    } finally {
+      await context.close();
+    }
+  });
 
 test('where he stood still and did not go on is marked', { skip: missing.join(', ') || false }, async () => {
   const context = await open();

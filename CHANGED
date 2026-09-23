@@ -2,6 +2,16 @@
 # Leerzeile an - neue Eintraege gehoeren also nach oben, und zwischen den
 # Bloecken steht genau eine Leerzeile. Eine Leerzeile direkt hier waere das
 # Ende der Anzeige, bevor sie angefangen hat.
+2026-09-23 ftui-neato-map 1.16.0
+ - show-cleaned schreibt die gereinigte Flaeche in die Zeile unter der
+   Karte: "342,6 m - 58 min - 48,9 m2". Im Tooltip steht, wieviel Boden es
+   insgesamt war und welcher Anteil das ist
+ - show-missed schraffiert weiterhin den ausgelassenen Boden, jetzt aber
+   ohne die Zahl zu erzwingen: die Zahl will man nach jedem Lauf, ein rotes
+   Muster ueber der ganzen Wohnung eher nicht
+ - in der Zeile steht die Flaeche statt der Prozentzahl. Quadratmeter kann
+   man sich vorstellen, "86 Prozent wovon" nicht
+
 2026-09-23 ftui-neato-map 1.15.0
  - die Zeile unter dem Grundriss nennt jetzt die Ausdehnung statt der
    Flaeche der Wandzellen. "30 m2" waren die 10-cm-Quadrate der Waende

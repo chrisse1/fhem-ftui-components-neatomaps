@@ -65,6 +65,7 @@ const TEXTS = {
     minutes: 'min',
     metres: 'm',
     covered: 'Abdeckung %s %',
+    cleanedOf: '%c von %f m² Boden gereinigt (%p %)',
     still: '%s s gestanden',
     plan: 'Grundriss',
     showPlan: 'Grundriss zeigen',
@@ -92,6 +93,7 @@ const TEXTS = {
     minutes: 'min',
     metres: 'm',
     covered: '%s % covered',
+    cleanedOf: '%c of %f m² of floor cleaned (%p %)',
     still: 'stood still for %s s',
     plan: 'Floor plan',
     showPlan: 'Show the floor plan',
@@ -239,10 +241,14 @@ export class FtuiNeatoMap extends FtuiElement {
       showDisputed: true,
       // A button in the bar that switches between the plan and the runs.
       showToggle: false,
-      // What the brush never went over, hatched, plus the share it did cover
-      // in the line below. Off by default: it is an interpretation of the
-      // track, not a measurement, and on a thinned recording it says nothing.
+      // What the brush never went over, hatched over the map. Off by default:
+      // it is an interpretation of the track, not a measurement, and on a
+      // thinned recording it says nothing.
       showMissed: false,
+      // The cleaned area in the line below the map. The same arithmetic, minus
+      // the hatching - a number one wants after every run, a red pattern over
+      // the whole flat not so much.
+      showCleaned: false,
       // Width of the robot in metres - everything within half of that of its
       // centre counts as swept.
       brushWidth: 0.32,
@@ -397,6 +403,7 @@ export class FtuiNeatoMap extends FtuiElement {
       case 'min-wall':
       case 'snap-angle':
       case 'show-missed':
+      case 'show-cleaned':
       case 'brush-width':
         this.drawing = null;
         this.requestUpdate({});
@@ -976,9 +983,20 @@ export class FtuiNeatoMap extends FtuiElement {
       parts.push(`${info.distance.toLocaleString(locale, { maximumFractionDigits: 1 })} ${texts.metres}`);
       parts.push(`${Math.round(info.seconds / 60)} ${texts.minutes}`);
     }
+    // What the brush actually went over, in square metres - the number
+    // somebody wants after a run. The share it is of the floor, and how much
+    // floor there was, go in the tooltip: one number in the line, the whole
+    // story on hover.
     const missed = this.missedFloor();
     if (missed) {
-      parts.push(texts.covered.replace('%s', String(Math.round(missed.covered * 100))));
+      const metres = (value) => value.toLocaleString(locale, { maximumFractionDigits: 1 });
+      parts.push(`${metres(missed.freeArea - missed.area)} m²`);
+      this.subElement.title = texts.cleanedOf
+        .replace('%c', metres(missed.freeArea - missed.area))
+        .replace('%f', metres(missed.freeArea))
+        .replace('%p', String(Math.round(missed.covered * 100)));
+    } else {
+      this.subElement.title = '';
     }
     if (count > 1) {
       parts.push(`${this.index + 1}/${count}`);
@@ -1228,7 +1246,7 @@ export class FtuiNeatoMap extends FtuiElement {
 
     // The floor he left out, hatched: it lies on top of the free area and has
     // to read as a texture, because it is the same floor, only not cleaned.
-    const missed = this.missedFloor();
+    const missed = this.showMissed ? this.missedFloor() : null;
     if (missed && missed.runs.length) {
       parts.push('<defs><pattern id="neato-missed" width="0.36" height="0.36"'
         + ' patternUnits="userSpaceOnUse" patternTransform="rotate(45)">'
@@ -1338,7 +1356,7 @@ export class FtuiNeatoMap extends FtuiElement {
    * be a number with nothing behind it. Then there is none.
    */
   missedFloor() {
-    if (!this.showMissed || !this.session || this.note || this.showPoints) {
+    if (!(this.showMissed || this.showCleaned) || !this.session || this.note || this.showPoints) {
       return null;
     }
     this.prepare();
@@ -1413,7 +1431,7 @@ export class FtuiNeatoMap extends FtuiElement {
 
     // Which of the free floor the brush never went over. Costs about 10 ms on
     // an hour long run, so it is only done when it is asked for.
-    if (this.showMissed) {
+    if (this.showMissed || this.showCleaned) {
       this.drawing.missed = countMissed(this.drawing.grid, this.drawing.cells, this.session.poses,
         { width: Number(this.brushWidth) });
     }
